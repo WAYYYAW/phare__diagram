@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>相图绘制工具</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-header">
+        <h1>相图分析工具 — Go + WebAssembly</h1>
+        <span class="wasm-status" id="wasmStatus">WASM 加载中...</span>
+    </div>
+
+    <div class="nav-bar">
+        <button class="nav-btn active" data-page="binary" onclick="switchPage('binary')">二元 (2D)</button>
+        <button class="nav-btn" data-page="ternary" onclick="switchPage('ternary')">三元 (3D)</button>
+    </div>
+
+    <!-- Binary Page -->
+    <div class="page active" id="page-binary">
+        <div class="sidebar-layout">
+            <div class="sidebar" id="binarySidebar"></div>
+            <div class="main-content">
+                <div class="chart-container" id="binaryChart"></div>
+                <div id="binaryResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ternary Page -->
+    <div class="page" id="page-ternary">
+        <div id="ternaryToolbar"></div>
+        <div class="ternary-layout">
+            <div class="ternary-3d">
+                <div class="chart-container" id="ternaryChart3d"></div>
+            </div>
+            <div class="ternary-2d">
+                <div class="chart-container" id="ternaryChart2d"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/binary.js"></script>
+    <script src="js/ternary.js"></script>
+    <script src="js/wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch('main.wasm'), go.importObject)
+            .then(result => {
+                go.run(result.instance);
+            })
+            .catch(err => {
+                document.getElementById('wasmStatus').textContent = 'WASM 加载失败';
+                console.error('WASM load error:', err);
+            });
+    </script>
+</body>
+</html>
