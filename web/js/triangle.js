@@ -22,7 +22,7 @@ function renderTriangle() {
                 <button class="btn btn-danger" onclick="triClear()">清空</button>
             </div>
             <canvas id="triCanvas" width="700" height="600" style="border:1px solid #ddd;border-radius:6px;cursor:crosshair;background:white;"></canvas>
-            <div id="triResult" style="width:100%;max-width:700px;min-height:48px;padding:10px 14px;background:#f5f7fa;border-radius:6px;font-size:14px;line-height:1.7;font-family:monospace;">点击三角形内部查看结果</div>
+            <div id="triResult" style="width:100%;max-width:700px;min-height:48px;"><div class="tri-info" style="text-align:center;color:#999;">👆 点击三角形内部查看结果</div></div>
         </div>
     `;
 
@@ -187,7 +187,7 @@ function triSetMode(mode) {
     TriState.points = [];
     TriState.locked = false;
     triClearState();
-    document.getElementById('triResult').textContent = '';
+    document.getElementById('triResult').innerHTML = '';
     triDraw();
     document.querySelectorAll('.tri-mode-btn').forEach(el => el.classList.remove('active'));
     document.querySelector(`.tri-mode-btn[data-mode="${mode}"]`)?.classList.add('active');
@@ -197,7 +197,7 @@ function triClear() {
     TriState.points = [];
     TriState.locked = false;
     triClearState();
-    document.getElementById('triResult').textContent = '';
+    document.getElementById('triResult').innerHTML = '';
     triDraw();
 }
 
@@ -210,7 +210,7 @@ function triOnClick(event) {
 
     const hit = xubenTriPointInTriangle(px, py, A[0], A[1], B[0], B[1], C[0], C[1]);
     if (!hit.ok) {
-        document.getElementById('triResult').textContent = '❌ 请在三角形内部点击';
+        document.getElementById('triResult').innerHTML = '<div class="tri-info error">❌ 请在三角形内部点击</div>';
         return;
     }
 
@@ -253,7 +253,14 @@ function triModePoint(px, py, a, b, c, resultEl, A, B, C) {
     if (bc) arrows.push({ x1: px, y1: py, x2: bc.x, y2: bc.y, color: 'green' });
 
     TriState.arrows = arrows;
-    resultEl.textContent = `✅ 成分点：A = ${a}%    B = ${b}%    C = ${c}%`;
+    resultEl.innerHTML = `<div class="tri-info point">
+        <strong>✅ 成分点组成</strong>
+        <table class="tri-result-table">
+            <tr><td>A</td><td><span class="val">${a}%</span></td></tr>
+            <tr><td>B</td><td><span class="val">${b}%</span></td></tr>
+            <tr><td>C</td><td><span class="val">${c}%</span></td></tr>
+        </table>
+    </div>`;
 }
 
 // ---- Mode: Vertex Lines ----
@@ -265,8 +272,15 @@ function triModeVertex(px, py, a, b, c, resultEl, A, B, C) {
         { x1: px, y1: py, x2: B[0], y2: B[1] },
         { x1: px, y1: py, x2: C[0], y2: C[1] },
     ];
-    const res = `📌 顶点连线模式\n当前成分：A=${a}% B=${b}% C=${c}%\n过A：B/C=${b}:${c}=定值\n过B：A/C=${a}:${c}=定值\n过C：A/B=${a}:${b}=定值`;
-    resultEl.textContent = res;
+    resultEl.innerHTML = `<div class="tri-info vertex">
+        <strong>📌 顶点连线模式</strong>
+        <table class="tri-result-table">
+            <tr><td>当前成分</td><td>A=<span class="val">${a}%</span> B=<span class="val">${b}%</span> C=<span class="val">${c}%</span></td></tr>
+            <tr><td>过A</td><td>B:C = <span class="val">${b}:${c}</span> (定值)</td></tr>
+            <tr><td>过B</td><td>A:C = <span class="val">${a}:${c}</span> (定值)</td></tr>
+            <tr><td>过C</td><td>A:B = <span class="val">${a}:${b}</span> (定值)</td></tr>
+        </table>
+    </div>`;
 }
 
 // ---- Mode: Two-Phase ----
@@ -274,10 +288,18 @@ function triModePhase2(px, py, resultEl) {
     if (!TriState.locked && TriState.points.length < 2) {
         triClearState();
         TriState.points.push([px, py]);
-        resultEl.textContent = `已选择：${['α相', 'β相'][TriState.points.length - 1]}`;
+        const phaseLabels = ['α相', 'β相'];
+        const idx = TriState.points.length - 1;
+        const colors = ['red', 'blue'];
+        resultEl.innerHTML = `<div class="tri-info phase2">
+            <strong>📌 选择两相</strong>
+            <table class="tri-result-table">
+                <tr><td>第${idx+1}相</td><td><span class="tri-badge ${colors[idx]}"></span>${phaseLabels[idx]} — (${px.toFixed(0)}, ${py.toFixed(0)})</td></tr>
+            </table>
+        </div>`;
         if (TriState.points.length === 2) {
             TriState.locked = true;
-            resultEl.textContent = '✅ 两相已确定！靠近直线点击即可';
+            resultEl.innerHTML = '<div class="tri-info phase2"><strong>✅ 两相已确定！</strong>靠近直线点击计算杠杆定律</div>';
         }
         return;
     }
@@ -299,11 +321,15 @@ function triModePhase2(px, py, resultEl) {
         const wa = Math.round(d2 / total * 10000) / 100;
         const wb = Math.round(d1 / total * 10000) / 100;
 
-        resultEl.textContent =
-`⚖️ 两相杠杆定律
-α到R: L1=${d1.toFixed(1)}  β到R: L2=${d2.toFixed(1)}
-α% = L2/(L1+L2) = ${wa}%
-β% = L1/(L1+L2) = ${wb}%`;
+        resultEl.innerHTML = `<div class="tri-info phase2">
+            <strong>⚖️ 两相杠杆定律</strong>
+            <table class="tri-result-table">
+                <tr><td><span class="tri-badge red"></span>α到R</td><td>L₁ = <span class="val">${d1.toFixed(1)}</span></td></tr>
+                <tr><td><span class="tri-badge blue"></span>β到R</td><td>L₂ = <span class="val">${d2.toFixed(1)}</span></td></tr>
+                <tr><td><span class="tri-badge red"></span>α%</td><td>L₂/(L₁+L₂) = <span class="val">${wa}%</span></td></tr>
+                <tr><td><span class="tri-badge blue"></span>β%</td><td>L₁/(L₁+L₂) = <span class="val">${wb}%</span></td></tr>
+            </table>
+        </div>`;
     }
 }
 
@@ -312,10 +338,18 @@ function triModePhase3(px, py, resultEl) {
     if (!TriState.locked && TriState.points.length < 3) {
         triClearState();
         TriState.points.push([px, py]);
-        resultEl.textContent = `已选择：${['α相', 'β相', 'γ相'][TriState.points.length - 1]}`;
+        const p3Labels = ['α相', 'β相', 'γ相'];
+        const p3Colors = ['red', 'blue', 'green'];
+        const p3Idx = TriState.points.length - 1;
+        resultEl.innerHTML = `<div class="tri-info phase3">
+            <strong>📌 选择三相</strong>
+            <table class="tri-result-table">
+                <tr><td>第${p3Idx+1}相</td><td><span class="tri-badge ${p3Colors[p3Idx]}"></span>${p3Labels[p3Idx]} — (${px.toFixed(0)}, ${py.toFixed(0)})</td></tr>
+            </table>
+        </div>`;
         if (TriState.points.length === 3) {
             TriState.locked = true;
-            resultEl.textContent = '✅ 三相已确定！在三角形内点R';
+            resultEl.innerHTML = '<div class="tri-info phase3"><strong>✅ 三相已确定！</strong>在三角形内部点击计算杠杆定律</div>';
         }
         return;
     }
@@ -327,7 +361,7 @@ function triModePhase3(px, py, resultEl) {
         const inside = xubenTriPointInTriangle3(px, py,
             alpha[0], alpha[1], beta[0], beta[1], gamma[0], gamma[1]);
         if (!inside) {
-            resultEl.textContent = '❌ 只能在三相三角形内部点击！';
+            resultEl.innerHTML = '<div class="tri-info error">❌ 只能在三相三角形内部点击</div>';
             return;
         }
 
@@ -360,10 +394,13 @@ function triModePhase3(px, py, resultEl) {
         const wBeta = Math.round(er / ex * 10000) / 100;
         const wGamma = Math.round(fr / fx * 10000) / 100;
 
-        resultEl.textContent =
-`🔺 三相杠杆定律（线段法）
-α% = Rd/αd = ${dr.toFixed(1)}/${dx.toFixed(1)} = ${wAlpha}%
-β% = Re/βe = ${er.toFixed(1)}/${ex.toFixed(1)} = ${wBeta}%
-γ% = Rf/γf = ${fr.toFixed(1)}/${fx.toFixed(1)} = ${wGamma}%`;
+        resultEl.innerHTML = `<div class="tri-info phase3">
+            <strong>🔺 三相杠杆定律（线段法）</strong>
+            <table class="tri-result-table">
+                <tr><td><span class="tri-badge red"></span>α%</td><td>Rd/αd = ${dr.toFixed(1)}/${dx.toFixed(1)} = <span class="val">${wAlpha}%</span></td></tr>
+                <tr><td><span class="tri-badge blue"></span>β%</td><td>Re/βe = ${er.toFixed(1)}/${ex.toFixed(1)} = <span class="val">${wBeta}%</span></td></tr>
+                <tr><td><span class="tri-badge green"></span>γ%</td><td>Rf/γf = ${fr.toFixed(1)}/${fx.toFixed(1)} = <span class="val">${wGamma}%</span></td></tr>
+            </table>
+        </div>`;
     }
 }

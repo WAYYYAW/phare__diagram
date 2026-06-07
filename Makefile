@@ -3,10 +3,10 @@
 build: wasm server
 
 wasm:
-	GOOS=js GOARCH=wasm go build -o web/main.wasm ./wasm/
+	CGO_ENABLED=0 GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/main.wasm ./wasm/
 
 server:
-	go build -o xuben-server ./server.go
+	CGO_ENABLED=0 go build -o xuben-server ./server.go
 
 bundle: wasm /tmp/plotly.min.js
 	go run ./cmd/bundle/

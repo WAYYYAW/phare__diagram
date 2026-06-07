@@ -325,6 +325,118 @@ select:focus {
     width: 120px;
 }
 
+/* Triangle result styling */
+.tri-info {
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 5px;
+    margin-bottom: 6px;
+}
+
+.tri-info.point {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+}
+
+.tri-info.vertex {
+    background: #f3e5f5;
+    border: 1px solid #ce93d8;
+}
+
+.tri-info.phase2 {
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+}
+
+.tri-info.phase3 {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+}
+
+.tri-info.error {
+    background: #ffebee;
+    border: 1px solid #ef9a9a;
+    color: #c62828;
+}
+
+.tri-info .label {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 12px;
+    margin: 0 2px;
+}
+
+.tri-info .label.red { background: #ffcdd2; color: #c62828; }
+.tri-info .label.blue { background: #bbdefb; color: #1565c0; }
+.tri-info .label.green { background: #c8e6c9; color: #2e7d32; }
+.tri-info .label.orange { background: #ffe0b2; color: #e65100; }
+
+.tri-result-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    font-size: 13px;
+}
+
+.tri-result-table td {
+    padding: 3px 8px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.tri-result-table td:first-child {
+    font-weight: 500;
+    color: #555;
+    width: 100px;
+}
+
+.tri-result-table .val {
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+.tri-result-table .phase-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tri-badge {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+.tri-badge.red { background: #e53935; }
+.tri-badge.blue { background: #1e88e5; }
+.tri-badge.green { background: #43a047; }
+
+/* Ensure table columns are visible on narrow screens */
+.data-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.data-table .col-type {
+    min-width: 100px;
+}
+
+.data-table .col-start,
+.data-table .col-end {
+    min-width: 80px;
+}
+
+.data-table .col-curve {
+    min-width: 70px;
+}
+
+.data-table .col-actions {
+    min-width: 40px;
+}
+
 .region-badge {
     display: inline-block;
     padding: 2px 10px;

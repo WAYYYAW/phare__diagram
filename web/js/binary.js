@@ -131,13 +131,13 @@ function renderLinesEditor() {
     let rows = '';
     state.lines.forEach((l, i) => {
         rows += `<tr>
-            <td><input type="text" value="${l.start || ''}" onchange="onLineEdit(${i}, 'start', this.value)"></td>
-            <td><input type="text" value="${l.end || ''}" onchange="onLineEdit(${i}, 'end', this.value)"></td>
-            <td><select onchange="onLineEdit(${i}, 'type', this.value)">
+            <td class="col-start"><input type="text" value="${l.start || ''}" onchange="onLineEdit(${i}, 'start', this.value)"></td>
+            <td class="col-end"><input type="text" value="${l.end || ''}" onchange="onLineEdit(${i}, 'end', this.value)"></td>
+            <td class="col-type"><select onchange="onLineEdit(${i}, 'type', this.value)">
                 ${lineTypes.map(t => `<option value="${t}" ${l.type === t ? 'selected' : ''}>${AppState.lineStyles[t].label}</option>`).join('')}
             </select></td>
-            <td><input type="number" value="${l.curve || 0}" step="50" onchange="onLineEdit(${i}, 'curve', parseFloat(this.value) || 0)"></td>
-            <td><button class="btn btn-danger" onclick="removeLine(${i})" style="padding:2px 6px;font-size:11px;">✕</button></td>
+            <td class="col-curve"><input type="number" value="${l.curve || 0}" step="50" onchange="onLineEdit(${i}, 'curve', parseFloat(this.value) || 0)"></td>
+            <td class="col-actions"><button class="btn btn-danger" onclick="removeLine(${i})" style="padding:2px 6px;font-size:11px;">✕</button></td>
         </tr>`;
     });
 
@@ -157,10 +157,12 @@ function renderLinesEditor() {
             </div>
         </div>
         <button class="btn btn-primary btn-full" onclick="addLine()" style="margin-bottom:8px;">➕ 添加线</button>
+        <div class="data-table-wrapper">
         <table class="data-table">
-            <thead><tr><th>起点</th><th>终点</th><th>类型</th><th>曲率</th><th></th></tr></thead>
+            <thead><tr><th class="col-start">起点</th><th class="col-end">终点</th><th class="col-type">类型</th><th class="col-curve">曲率</th><th class="col-actions"></th></tr></thead>
             <tbody>${rows || '<tr><td colspan="5" class="empty-state">暂无数据</td></tr>'}</tbody>
         </table>
+        </div>
     `;
 }
 
