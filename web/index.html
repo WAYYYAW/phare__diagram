@@ -16,6 +16,7 @@
     <div class="nav-bar">
         <button class="nav-btn active" data-page="binary" onclick="switchPage('binary')">二元 (2D)</button>
         <button class="nav-btn" data-page="ternary" onclick="switchPage('ternary')">三元 (3D)</button>
+        <button class="nav-btn" data-page="triangle" onclick="switchPage('triangle')">浓度三角形</button>
     </div>
 
     <!-- Binary Page -->
@@ -42,9 +43,15 @@
         </div>
     </div>
 
+    <!-- Triangle Page -->
+    <div class="page" id="page-triangle">
+        <div id="triangleContainer"></div>
+    </div>
+
     <script src="js/app.js"></script>
     <script src="js/binary.js"></script>
     <script src="js/ternary.js"></script>
+    <script src="js/triangle.js"></script>
     <script src="js/wasm_exec.js"></script>
     <script>
         const go = new Go();

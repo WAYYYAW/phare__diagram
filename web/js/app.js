@@ -35,7 +35,8 @@ function switchPage(name) {
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     document.querySelector(`.nav-btn[data-page="${name}"]`).classList.add('active');
     if (name === 'binary') renderBinary();
-    else renderTernary();
+    else if (name === 'ternary') renderTernary();
+    else if (name === 'triangle') renderTriangle();
 }
 
 function debounce(fn, ms) {
