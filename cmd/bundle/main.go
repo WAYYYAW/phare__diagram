@@ -79,6 +79,7 @@ func main() {
 		`<script src="js/app.js"></script>`,
 		`<script src="js/binary.js"></script>`,
 		`<script src="js/ternary.js"></script>`,
+		`<script src="js/triangle.js"></script>`,
 		`<script src="js/wasm_exec.js"></script>`,
 	} {
 		src = strings.Replace(src, tag, "", 1)
