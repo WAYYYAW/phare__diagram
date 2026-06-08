@@ -3,6 +3,7 @@ const TERN_MIN = 0;
 const TERN_MAX = 1300;
 const SURFACE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0',
     '#E91E63', '#00BCD4', '#795548', '#607D8B'];
+let ternShowCoords = false;
 
 function renderTernary() {
     const state = AppState.ternary;
@@ -40,8 +41,12 @@ function renderTernaryToolbar() {
             <button class="btn btn-danger" onclick="clearTernary()">🗑 清空全部</button>
             <button class="btn btn-primary" onclick="saveTernary()">💾 保存相图</button>
             <button class="btn" onclick="loadTernary()">📂 还原相图</button>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-left:auto;">
+                <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 显示坐标信息
+            </label>
         </div>
         <div class="caption">数据: ${state.points.length}点 / ${state.lines.length}线 / ${state.surfs.length}面 | 等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
+        <div id="ternHoverInfo" style="margin-top:6px;font-size:12px;min-height:20px;color:#666;"></div>
     `;
     container.innerHTML = html;
 }
@@ -305,6 +310,8 @@ function renderTernaryCharts() {
     renderTernary2d();
 }
 
+// ---- 3D View ----
+
 function renderTernary3d() {
     const state = AppState.ternary;
     const traces = [];
@@ -315,7 +322,8 @@ function renderTernary3d() {
     traces.push({
         x: triX, y: triY, z: [0, 0, 0, 0],
         mode: 'lines', line: { color: 'black', width: 3 }, name: '底面',
-        type: 'scatter3d', showlegend: true
+        type: 'scatter3d', showlegend: true,
+        hoverinfo: ternShowCoords ? 'x+y+z' : 'skip',
     });
 
     // Vertical edges
@@ -323,7 +331,7 @@ function renderTernary3d() {
         traces.push({
             x: [cx, cx], y: [cy, cy], z: [TERN_MIN, TERN_MAX],
             mode: 'lines', line: { color: '#999', width: 1, dash: 'dash' },
-            type: 'scatter3d', showlegend: false
+            type: 'scatter3d', showlegend: false, hoverinfo: 'skip'
         });
     });
 
@@ -332,12 +340,12 @@ function renderTernary3d() {
         traces.push({
             x: [cx], y: [cy], z: [TERN_MIN],
             mode: 'text', text: [lbl], textfont: { size: 14, color: '#C62828' },
-            type: 'scatter3d', showlegend: false
+            type: 'scatter3d', showlegend: false, hoverinfo: 'skip'
         });
         traces.push({
             x: [cx], y: [cy], z: [TERN_MAX],
             mode: 'text', text: [lbl], textfont: { size: 10, color: '#E53935' },
-            type: 'scatter3d', showlegend: false
+            type: 'scatter3d', showlegend: false, hoverinfo: 'skip'
         });
     });
 
@@ -347,17 +355,18 @@ function renderTernary3d() {
         traces.push({
             x: triX, y: triY, z: [tVal, tVal, tVal, tVal],
             mode: 'lines', line: { color: '#CCC', width: 0.5 },
-            type: 'scatter3d', showlegend: false
+            type: 'scatter3d', showlegend: false, hoverinfo: 'skip'
         });
     }
 
     // Points
     const validPts = state.points.filter(p => p.a != null);
     if (validPts.length > 0) {
-        const tx = [], ty = [], tz = [], tlbls = [];
+        const tx = [], ty = [], tz = [], tlbls = [], thovers = [];
         validPts.forEach(p => {
             const r = xubenTernTo3d(p.a, p.b, p.c, p.temp);
             tx.push(r.x); ty.push(r.y); tz.push(r.z); tlbls.push(p.label);
+            thovers.push(`${p.label}<br>A=${p.a}% B=${p.b}% C=${p.c}%<br>T=${p.temp}°C`);
         });
         traces.push({
             x: tx, y: ty, z: tz,
@@ -365,7 +374,9 @@ function renderTernary3d() {
             marker: { size: 6, color: '#E53935', line: { width: 1, color: 'white' } },
             text: tlbls, textposition: 'top center',
             textfont: { size: 11, color: '#C62828' },
-            name: '数据点', type: 'scatter3d'
+            name: '数据点', type: 'scatter3d',
+            hoverinfo: ternShowCoords ? 'text' : 'skip',
+            hovertext: thovers,
         });
     }
 
@@ -385,7 +396,8 @@ function renderTernary3d() {
             line: { color: '#1565C0', width: 3 },
             name: `${ln.start}-${ln.end}`,
             showlegend: lnFirst,
-            type: 'scatter3d'
+            type: 'scatter3d',
+            hoverinfo: 'skip'
         });
         lnFirst = false;
     });
@@ -428,7 +440,8 @@ function renderTernary3d() {
                     type: 'mesh3d',
                     color: color,
                     opacity: 0.6,
-                    name: `曲面#${si + 1}`
+                    name: `曲面#${si + 1}`,
+                    hoverinfo: ternShowCoords ? 'x+y+z' : 'skip',
                 });
             }
         } catch(e) {
@@ -445,58 +458,231 @@ function renderTernary3d() {
             type: 'mesh3d',
             color: '#FF8C00',
             opacity: 0.3,
-            name: `等温面 ${t}°C`
+            name: `等温面 ${t}°C`,
+            hoverinfo: 'skip'
         });
     }
 
+    // Hoverable base plane (when coords enabled)
+    if (ternShowCoords) {
+        traces.push({
+            x: [0, 1, 0.5], y: [0, 0, TERN_Y_TOP], z: [0, 0, 0],
+            i: [0], j: [1], k: [2],
+            type: 'mesh3d',
+            color: 'rgba(255,255,255,0)',
+            opacity: 0.01,
+            name: '坐标面',
+            hoverinfo: 'x+y+z',
+            showlegend: false,
+        });
+    }
+
+    const sceneConfig = {
+        xaxis: { range: [-0.12, 1.12] },
+        yaxis: { range: [-0.12, TERN_Y_TOP + 0.12] },
+        zaxis: { title: 'T °C', range: [TERN_MIN, TERN_MAX] },
+        aspectmode: 'manual',
+        aspectratio: { x: 1, y: 1, z: 0.5 },
+        camera: { eye: { x: 1.5, y: 1.5, z: 1.0 } },
+    };
+
+    if (ternShowCoords) {
+        sceneConfig.xaxis = {
+            visible: true, range: [-0.12, 1.12],
+            title: { text: 'B →' },
+            tickvals: [0, 0.25, 0.5, 0.75, 1],
+            ticktext: ['0%', '25%', '50%', '75%', '100%'],
+            zeroline: false,
+        };
+        sceneConfig.yaxis = {
+            visible: true, range: [-0.12, TERN_Y_TOP + 0.12],
+            title: { text: 'C →' },
+            tickvals: [0, TERN_Y_TOP * 0.25, TERN_Y_TOP * 0.5, TERN_Y_TOP * 0.75, TERN_Y_TOP],
+            ticktext: ['0%', '25%', '50%', '75%', '100%'],
+            zeroline: false,
+        };
+    }
+
     const layout = {
-        scene: {
-            xaxis: { visible: false, range: [-0.08, 1.08] },
-            yaxis: { visible: false, range: [-0.08, TERN_Y_TOP + 0.08] },
-            zaxis: { title: 'T °C', range: [TERN_MIN, TERN_MAX] },
-            aspectmode: 'manual',
-            aspectratio: { x: 1, y: 1, z: 0.5 },
-            camera: { eye: { x: 1.5, y: 1.5, z: 1.0 } },
-        },
+        scene: sceneConfig,
         height: 560,
         margin: { l: 0, r: 0, t: 30, b: 0 },
         legend: { orientation: 'h', yanchor: 'top', y: -0.12, xanchor: 'center', x: 0.5, font: { size: 9 } },
+        hovermode: ternShowCoords ? 'closest' : false,
     };
 
     Plotly.newPlot('ternaryChart3d', traces, layout, { responsive: true });
+
+    if (ternShowCoords) {
+        document.getElementById('ternaryChart3d').on('plotly_hover', (eventData) => {
+            const pts = eventData.points;
+            if (!pts || pts.length === 0) return;
+            const p = pts[0];
+            const infoEl = document.getElementById('ternHoverInfo');
+            if (!infoEl) return;
+
+            if (p.data && p.data.name === '坐标面') {
+                const r = xubenTernFrom3d(p.x, p.y);
+                infoEl.innerHTML = `<span style="color:#333;"><b>📍 坐标:</b> A=${r.a}% B=${r.b}% C=${r.c}% | x=${p.x.toFixed(4)} y=${p.y.toFixed(4)} z=${p.z.toFixed(1)}°C</span>`;
+            } else if (p.data && p.data.name === '数据点') {
+                infoEl.innerHTML = `<span style="color:#333;">${p.hovertext || p.text}</span>`;
+            } else if (p.data && p.data.type === 'mesh3d' && p.data.name && p.data.name.startsWith('曲面')) {
+                const r = xubenTernFrom3d(p.x, p.y);
+                infoEl.innerHTML = `<span style="color:#333;"><b>${p.data.name}</b> A=${r.a}% B=${r.b}% C=${r.c}% | T=${p.z.toFixed(1)}°C</span>`;
+            } else {
+                const r = xubenTernFrom3d(p.x, p.y);
+                infoEl.innerHTML = `<span style="color:#888;">A=${r.a}% B=${r.b}% C=${r.c}% | (${p.x.toFixed(4)}, ${p.y.toFixed(4)}, ${p.z.toFixed(1)})</span>`;
+            }
+        });
+        document.getElementById('ternaryChart3d').on('plotly_unhover', () => {
+            const infoEl = document.getElementById('ternHoverInfo');
+            if (infoEl) infoEl.innerHTML = '';
+        });
+    } else {
+        const infoEl = document.getElementById('ternHoverInfo');
+        if (infoEl) infoEl.innerHTML = '';
+    }
 }
+
+// ---- 2D Projection ----
 
 function renderTernary2d() {
     const state = AppState.ternary;
     const traces = [];
+    const isoTemp = state.isoTemp != null ? state.isoTemp : 0;
 
     const triX = [0, 1, 0.5, 0];
     const triY = [0, 0, TERN_Y_TOP, 0];
 
-    // Base triangle
+    // ---- Surface projection (Coons patches → 2D filled polygons) ----
+    state.surfs.forEach((s, si) => {
+        const sfIndices = [];
+        for (const pair of s.line_labels) {
+            for (let j = 0; j < state.lines.length; j++) {
+                const ln = state.lines[j];
+                if ((ln.start === pair[0] && ln.end === pair[1]) ||
+                    (ln.start === pair[1] && ln.end === pair[0])) {
+                    sfIndices.push(j); break;
+                }
+            }
+        }
+        if (sfIndices.length < 3) return;
+
+        try {
+            const ptsJSON = JSON.stringify(state.points);
+            const lnsJSON = JSON.stringify(state.lines);
+            const idxJSON = JSON.stringify(sfIndices);
+            let result;
+            if (sfIndices.length === 3) {
+                result = xubenTernBuildCoons3Edge(ptsJSON, lnsJSON, idxJSON);
+            } else {
+                result = xubenTernBuildCoons4Edge(ptsJSON, lnsJSON, idxJSON);
+            }
+            if (!result || !result.verts) return;
+
+            const verts = result.verts;
+            const tris = result.tris;
+            const baseColor = SURFACE_COLORS[si % SURFACE_COLORS.length];
+
+            const abovePolys = [];
+            const belowPolys = [];
+            const sfContour = [];
+
+            const lerp = (a, b, za, zb) => {
+                const t = (isoTemp - za) / (zb - za);
+                return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+            };
+            const poly2d = (x1, y1, x2, y2, x3, y3) => [x1, y1, x2, y2, x3, y3, x1, y1, null, null];
+
+            tris.forEach(tri => {
+                const v0 = verts[tri[0]], v1 = verts[tri[1]], v2 = verts[tri[2]];
+                const z0 = v0[2], z1 = v1[2], z2 = v2[2];
+                const flags = [+(z0 > isoTemp), +(z1 > isoTemp), +(z2 > isoTemp)];
+                const above = flags[0] + flags[1] + flags[2];
+
+                if (above === 3) {
+                    abovePolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                } else if (above === 0) {
+                    belowPolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                } else {
+                    const up = [], dn = [];
+                    [v0, v1, v2].forEach((v, i) => { (flags[i] ? up : dn).push(v); });
+                    const ips = [];
+                    for (let e = 0; e < 3; e++) {
+                        const a = [v0, v1, v2][e], b = [v0, v1, v2][(e + 1) % 3];
+                        if ((a[2] - isoTemp) * (b[2] - isoTemp) < 0) ips.push(lerp(a, b, a[2], b[2]));
+                    }
+                    if (ips.length === 2) sfContour.push([ips[0], ips[1]]);
+
+                    if (above === 1) {
+                        const A = up[0];
+                        abovePolys.push(poly2d(A[0], A[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                        belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                        belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[1][0], ips[1][1], dn[1][0], dn[1][1]));
+                    } else {
+                        const B = dn[0];
+                        abovePolys.push(poly2d(up[0][0], up[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                        abovePolys.push(poly2d(up[0][0], up[0][1], ips[1][0], ips[1][1], up[1][0], up[1][1]));
+                        belowPolys.push(poly2d(B[0], B[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                    }
+                }
+            });
+
+            // Above-plane fill
+            if (abovePolys.length > 0) {
+                const ax = [], ay = [];
+                abovePolys.forEach(p => { ax.push(...p.filter((_, i) => i % 2 === 0)); ay.push(...p.filter((_, i) => i % 2 === 1)); });
+                traces.push({
+                    x: ax, y: ay,
+                    mode: 'lines', line: { color: baseColor, width: 1.5 },
+                    type: 'scatter', fill: 'toself',
+                    fillcolor: baseColor + '55',
+                    name: `面#${si + 1} 上方`, showlegend: true, hoverinfo: 'skip',
+                });
+            }
+
+            // Below-plane fill (faint)
+            if (belowPolys.length > 0) {
+                const bx = [], by = [];
+                belowPolys.forEach(p => { bx.push(...p.filter((_, i) => i % 2 === 0)); by.push(...p.filter((_, i) => i % 2 === 1)); });
+                traces.push({
+                    x: bx, y: by,
+                    mode: 'lines', line: { color: '#ccc', width: 0.5 },
+                    type: 'scatter', fill: 'toself',
+                    fillcolor: baseColor + '14',
+                    name: `面#${si + 1} 下方`, showlegend: true, hoverinfo: 'skip',
+                });
+            }
+
+            // Surface intersection contour
+            if (sfContour.length > 0) {
+                const cx = [], cy = [];
+                sfContour.forEach(seg => { cx.push(seg[0][0], seg[1][0], null); cy.push(seg[0][1], seg[1][1], null); });
+                traces.push({
+                    x: cx, y: cy,
+                    mode: 'lines', line: { color: '#D32F2F', width: 3 },
+                    type: 'scatter', name: `交线#${si + 1}`, showlegend: true, hoverinfo: 'skip',
+                });
+            }
+        } catch(e) { console.error('Surface 2D error:', e); }
+    });
+
+    // ---- Base triangle outline ----
     traces.push({
         x: triX, y: triY, mode: 'lines',
         line: { color: 'black', width: 2 },
-        type: 'scatter', showlegend: false
+        type: 'scatter', showlegend: false, hoverinfo: 'skip',
     });
 
-    // Grid
-    for (let v = 10; v < 100; v += 10) {
-        const f = v / 100;
-        traces.push({ x: [1-f, 0.5*(1-f)], y: [0, TERN_Y_TOP*(1-f)], mode: 'lines', line: { color: '#EEE', width: 0.5 }, type: 'scatter', showlegend: false, hoverinfo: 'skip' });
-        traces.push({ x: [f, 0.5+0.5*f], y: [0, TERN_Y_TOP*(1-f)], mode: 'lines', line: { color: '#EEE', width: 0.5 }, type: 'scatter', showlegend: false, hoverinfo: 'skip' });
-        traces.push({ x: [0.5*f, 1-0.5*f], y: [TERN_Y_TOP*f, TERN_Y_TOP*f], mode: 'lines', line: { color: '#EEE', width: 0.5 }, type: 'scatter', showlegend: false, hoverinfo: 'skip' });
-    }
-
-    // Vertex labels
+    // ---- Vertex labels ----
     traces.push({
-        x: [0, 1, 0.5], y: [-0.03, -0.03, TERN_Y_TOP + 0.03],
+        x: [-0.02, 1.02, 0.5], y: [-0.06, -0.06, TERN_Y_TOP + 0.06],
         mode: 'text', text: ['A', 'B', 'C'],
         textfont: { size: 14, color: 'black' },
-        type: 'scatter', showlegend: false, hoverinfo: 'skip'
+        type: 'scatter', showlegend: false, hoverinfo: 'skip',
     });
 
-    // Projected lines
+    // ---- Projected lines ----
     state.lines.forEach(ln => {
         const sp = state.points.find(p => p.label === ln.start);
         const ep = state.points.find(p => p.label === ln.end);
@@ -509,11 +695,11 @@ function renderTernary2d() {
             x: curve.xs, y: curve.ys,
             mode: 'lines',
             line: { color: '#1565C0', width: 1, dash: 'dot' },
-            type: 'scatter', showlegend: false, hoverinfo: 'skip'
+            type: 'scatter', showlegend: false, hoverinfo: 'skip',
         });
     });
 
-    // Projected points
+    // ---- Projected points ----
     const validPts = state.points.filter(p => p.a != null);
     if (validPts.length > 0) {
         const tx = [], ty = [], tlbls = [];
@@ -527,7 +713,7 @@ function renderTernary2d() {
             marker: { size: 5, color: '#E53935' },
             text: tlbls, textposition: 'top center',
             textfont: { size: 9, color: '#C62828' },
-            type: 'scatter', showlegend: false
+            type: 'scatter', showlegend: false,
         });
     }
 
@@ -537,7 +723,10 @@ function renderTernary2d() {
         height: 440,
         margin: { l: 10, r: 10, t: 30, b: 10 },
         plot_bgcolor: 'white',
+        showlegend: true,
+        legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'center', x: 0.5, font: { size: 9 } },
     };
 
-    Plotly.newPlot('ternaryChart2d', traces, layout, { responsive: true });
+    Plotly.react('ternaryChart2d', traces, layout, { responsive: true });
 }
+

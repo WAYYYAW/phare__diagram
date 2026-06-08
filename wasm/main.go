@@ -190,82 +190,6 @@ func computeTemplatePointsJS(this js.Value, args []js.Value) interface{} {
 	})
 }
 
-func computeLinesForExportJS(this js.Value, args []js.Value) interface{} {
-	if len(args) < 3 {
-		return js.Undefined()
-	}
-	pts := parseJSONCompPoints(args[0].String())
-	lns := parseJSONLines(args[1].String())
-	exportLines := args[2].Bool()
-
-	shown := make(map[string]bool)
-	var lines []LineExportItem
-	for _, ln := range lns {
-		p1 := findPoint(pts, ln.Start)
-		p2 := findPoint(pts, ln.End)
-		if p1 == nil || p2 == nil {
-			continue
-		}
-		xs, ys := getBezierCurve(p1.Comp, p1.Temp, p2.Comp, p2.Temp, ln.Curve, 40)
-
-		style := getLineStyle(ln.Type)
-		label := style["label"].(string)
-		isFirst := !shown[ln.Type]
-		shown[ln.Type] = true
-
-		if isFirst {
-			lines = append(lines, LineExportItem{
-				Type:  ln.Type,
-				Label: label,
-				Color: style["color"].(string),
-				Dash:  style["ls"].(string),
-				Width: style["lw"].(float64),
-				Xs:    xs,
-				Ys:    ys,
-			})
-		} else {
-			lines = append(lines, LineExportItem{
-				Type:  ln.Type,
-				Label: label,
-				Color: style["color"].(string),
-				Dash:  style["ls"].(string),
-				Width: style["lw"].(float64),
-				Xs:    xs,
-				Ys:    ys,
-			})
-		}
-	}
-	if !exportLines {
-		return jsJSON(lines)
-	}
-	return jsJSON(LinesExport{Lines: lines})
-}
-
-func findPoint(pts []CompPoint, label string) *CompPoint {
-	for i, p := range pts {
-		if p.Label == label {
-			return &pts[i]
-		}
-	}
-	return nil
-}
-
-func getLineStyle(t string) map[string]interface{} {
-	styles := map[string]map[string]interface{}{
-		"liquidus":   {"color": "#1565C0", "ls": "-", "lw": 2.5, "label": "液相线"},
-		"solidus":    {"color": "#E53935", "ls": "-", "lw": 2.5, "label": "固相线"},
-		"eutectic":   {"color": "#6A1B9A", "ls": "--", "lw": 2.0, "label": "三相线"},
-		"peritectic": {"color": "#FF8F00", "ls": "-.", "lw": 2.0, "label": "包晶线"},
-		"solvus":     {"color": "#2E7D32", "ls": ":", "lw": 1.8, "label": "溶线"},
-		"eutectoid":  {"color": "#00ACC1", "ls": "--", "lw": 2.0, "label": "共析线"},
-		"other":      {"color": "#757575", "ls": ":", "lw": 1.5, "label": "其他"},
-	}
-	if s, ok := styles[t]; ok {
-		return s
-	}
-	return styles["other"]
-}
-
 func ternBuildBezierJS(this js.Value, args []js.Value) interface{} {
 	if len(args) < 2 {
 		return js.Undefined()
@@ -337,6 +261,16 @@ func ternTo3dJS(this js.Value, args []js.Value) interface{} {
 	return jsJSON(map[string]float64{"x": x, "y": y, "z": z})
 }
 
+func ternFrom3dJS(this js.Value, args []js.Value) interface{} {
+	if len(args) < 2 {
+		return js.Undefined()
+	}
+	x := args[0].Float()
+	y := args[1].Float()
+	a, b, c := ternFrom3d(x, y)
+	return jsJSON(map[string]float64{"a": a, "b": b, "c": c})
+}
+
 func main() {
 	c := make(chan struct{}, 0)
 
@@ -345,11 +279,11 @@ func main() {
 	js.Global().Set("xubenPerformLeverRule", js.FuncOf(performLeverRuleJS))
 	js.Global().Set("xubenGetRegionAt", js.FuncOf(getRegionAtJS))
 	js.Global().Set("xubenComputeTemplatePoints", js.FuncOf(computeTemplatePointsJS))
-	js.Global().Set("xubenComputeLinesForExport", js.FuncOf(computeLinesForExportJS))
 	js.Global().Set("xubenTernBuildBezier", js.FuncOf(ternBuildBezierJS))
 	js.Global().Set("xubenTernBuildCoons3Edge", js.FuncOf(ternBuildCoons3edgeJS))
 	js.Global().Set("xubenTernBuildCoons4Edge", js.FuncOf(ternBuildCoons4edgeJS))
 	js.Global().Set("xubenTernTo3d", js.FuncOf(ternTo3dJS))
+	js.Global().Set("xubenTernFrom3d", js.FuncOf(ternFrom3dJS))
 	js.Global().Set("xubenTriPointInTriangle", js.FuncOf(triPointInTriangleJS))
 	js.Global().Set("xubenTriProjectPointOnLine", js.FuncOf(triProjectPointOnLineJS))
 	js.Global().Set("xubenTriLineIntersection", js.FuncOf(triLineIntersectionJS))

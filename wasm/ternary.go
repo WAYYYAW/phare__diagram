@@ -1,6 +1,8 @@
 package main
 
-import "math"
+import (
+	"math"
+)
 
 var YTop = math.Sqrt(3) / 2
 
@@ -10,6 +12,50 @@ const (
 	TernBezierN = 30
 	TernCoonsN  = 20
 )
+
+func ternFrom3d(x, y float64) (float64, float64, float64) {
+	cRatio := y / YTop
+	if cRatio < 0 {
+		cRatio = 0
+	}
+	if cRatio > 1 {
+		cRatio = 1
+	}
+
+	bRatio := x - 0.5*cRatio
+	aRatio := 1 - bRatio - cRatio
+
+	if aRatio < 0 {
+		aRatio = 0
+		bRatio = 1 - cRatio
+		if bRatio < 0 {
+			bRatio = 0
+		}
+		if bRatio > 1 {
+			bRatio = 1
+		}
+	}
+	if bRatio < 0 {
+		bRatio = 0
+		aRatio = 1 - cRatio
+		if aRatio < 0 {
+			aRatio = 0
+		}
+		if aRatio > 1 {
+			aRatio = 1
+		}
+	}
+	if aRatio > 1 {
+		aRatio = 1
+		bRatio = 0
+		cRatio = 0
+	}
+
+	a := math.Round(aRatio*10000) / 100
+	b := math.Round(bRatio*10000) / 100
+	c := math.Round(cRatio*10000) / 100
+	return a, b, c
+}
 
 func ternTo3d(a, b, c, temp float64) (float64, float64, float64) {
 	total := a + b + c

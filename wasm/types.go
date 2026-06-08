@@ -66,26 +66,7 @@ type LeverResult struct {
 	WRight *float64 `json:"w_right,omitempty"`
 }
 
-type LinesExport struct {
-	Lines []LineExportItem `json:"lines"`
-}
-
-type LineExportItem struct {
-	Type  string    `json:"type"`
-	Label string    `json:"label"`
-	Color string    `json:"color"`
-	Dash  string    `json:"dash"`
-	Width float64   `json:"width"`
-	Xs    []float64 `json:"xs"`
-	Ys    []float64 `json:"ys"`
-}
-
 type CurveResult struct {
 	Xs []float64 `json:"xs"`
 	Ys []float64 `json:"ys"`
-}
-
-type SurfaceResult struct {
-	Verts [][3]float64 `json:"verts"`
-	Tris  [][3]int     `json:"tris"`
 }

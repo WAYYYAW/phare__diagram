@@ -39,14 +39,6 @@ function switchPage(name) {
     else if (name === 'triangle') renderTriangle();
 }
 
-function debounce(fn, ms) {
-    let timer;
-    return function(...args) {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn.apply(this, args), ms);
-    };
-}
-
 function nextAutoLabel(existing) {
     const set = new Set(existing);
     let n = 0;
@@ -61,17 +53,6 @@ function nextAutoLabel(existing) {
         if (!set.has(label)) return label;
         n++;
     }
-}
-
-function waitForWasm() {
-    return new Promise(resolve => {
-        if (AppState.wasmReady) return resolve();
-        const check = () => {
-            if (AppState.wasmReady) resolve();
-            else setTimeout(check, 50);
-        };
-        check();
-    });
 }
 
 // Called from wasm_exec.js / Go after init
