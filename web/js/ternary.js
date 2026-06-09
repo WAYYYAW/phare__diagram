@@ -120,15 +120,18 @@ function renderTernaryLines() {
 
 function renderTernarySurfaces() {
     const state = AppState.ternary;
-    let items = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="边界线 (逗号分隔, 如 AB, BC, CA)"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
+    let items = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="顶点标签序列，如 ABC 或 ADGF"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
 
     if (state.surfs.length > 0) {
-        items += '<table class="data-table"><thead><tr><th>#</th><th>边界线</th></tr></thead><tbody>';
+        items += '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th></th></tr></thead><tbody>';
         state.surfs.forEach((s, i) => {
-            items += `<tr><td>${i+1}</td><td>${s.line_labels.join(', ')}</td></tr>`;
+            items += `<tr>
+                <td style="vertical-align:middle;">${i+1}</td>
+                <td><input type="text" value="${s.line_labels.join(', ')}" onchange="onTernSfEdit(${i}, this.value)"></td>
+                <td><button class="btn btn-danger" onclick="removeTernSf(${i})" style="padding:2px 6px;font-size:11px;">✕</button></td>
+            </tr>`;
         });
         items += '</tbody></table>';
-        items += '<button class="btn btn-danger btn-full" onclick="removeLastSurface()" style="margin-top:8px;">🗑 删除最后一个曲面</button>';
     } else {
         items += '<div class="empty-state">暂无曲面</div>';
     }
@@ -212,35 +215,58 @@ function removeTernLn(idx) {
 
 function addTernSurface() {
     const state = AppState.ternary;
-    const raw = document.getElementById('sfInput').value.trim().replace(/[，、]/g, ',');
-    const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
-    if (parts.length !== 3 && parts.length !== 4) {
-        alert(`需要3或4条线，输入了${parts.length}条`);
+    const raw = document.getElementById('sfInput').value.trim().replace(/\s+/g, '').toUpperCase();
+    if (raw.length < 3 || raw.length > 4) {
+        alert('请输入3或4个顶点标签（如 ABC 或 ADGF），自动闭合为边线对');
         return;
     }
+
+    // Auto-split into pairs: "ABC" → AB, BC, CA; "ADGF" → AD, DG, GF, FA
+    const pairs = [];
+    for (let i = 0; i < raw.length; i++) {
+        pairs.push(raw[i] + raw[(i + 1) % raw.length]);
+    }
+
+    // Validate each character is a known point
+    const pointLabels = new Set(state.points.map(p => p.label));
+    for (const ch of raw) {
+        if (!pointLabels.has(ch)) {
+            alert(`顶点 '${ch}' 不存在`);
+            return;
+        }
+    }
+
+    // Validate each pair matches an existing line
     const indices = [];
     const seen = new Set();
-    for (const pair of parts) {
-        const sl = pair[0], el = pair[1];
+    for (const pair of pairs) {
         let found = -1;
         for (let i = 0; i < state.lines.length; i++) {
             const ln = state.lines[i];
-            if ((ln.start === sl && ln.end === el) || (ln.start === el && ln.end === sl)) {
+            if ((ln.start === pair[0] && ln.end === pair[1]) ||
+                (ln.start === pair[1] && ln.end === pair[0])) {
                 found = i; break;
             }
         }
-        if (found < 0) { alert(`未找到线 ${pair}`); return; }
-        if (seen.has(found)) { alert('不能重复使用同一条线'); return; }
+        if (found < 0) { alert(`未找到边界线 ${pair}`); return; }
+        if (seen.has(found)) { alert(`边界线 ${pair} 重复使用`); return; }
         seen.add(found);
         indices.push(found);
     }
-    state.surfs.push({ line_labels: parts });
+
+    state.surfs.push({ line_labels: pairs });
     renderTernary();
 }
 
-function removeLastSurface() {
-    AppState.ternary.surfs.pop();
+function removeTernSf(idx) {
+    AppState.ternary.surfs.splice(idx, 1);
     renderTernary();
+}
+
+function onTernSfEdit(idx, raw) {
+    const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
+    AppState.ternary.surfs[idx].line_labels = parts;
+    renderTernaryCharts();
 }
 
 function addIso() {
