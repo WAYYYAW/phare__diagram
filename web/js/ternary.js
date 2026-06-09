@@ -4,6 +4,8 @@ const TERN_MAX = 1300;
 const SURFACE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0',
     '#E91E63', '#00BCD4', '#795548', '#607D8B'];
 let ternShowCoords = false;
+let ternActiveTab = 'tPtTab';
+let ternShowAxes = false;
 
 function renderTernary() {
     const state = AppState.ternary;
@@ -19,21 +21,21 @@ function renderTernaryToolbar() {
         <div class="card">
             <div class="card-title">三元数据管理</div>
             <div class="tabs">
-                <button class="tab-btn active" data-tab="tPtTab" onclick="switchTernaryTab('tPtTab')">特征点</button>
-                <button class="tab-btn" data-tab="tLnTab" onclick="switchTernaryTab('tLnTab')">边界线</button>
-                <button class="tab-btn" data-tab="tSfTab" onclick="switchTernaryTab('tSfTab')">曲面</button>
-                <button class="tab-btn" data-tab="tIsoTab" onclick="switchTernaryTab('tIsoTab')">等温面</button>
+                <button class="tab-btn ${ternActiveTab === 'tPtTab' ? 'active' : ''}" data-tab="tPtTab" onclick="switchTernaryTab('tPtTab')">特征点</button>
+                <button class="tab-btn ${ternActiveTab === 'tLnTab' ? 'active' : ''}" data-tab="tLnTab" onclick="switchTernaryTab('tLnTab')">边界线</button>
+                <button class="tab-btn ${ternActiveTab === 'tSfTab' ? 'active' : ''}" data-tab="tSfTab" onclick="switchTernaryTab('tSfTab')">曲面</button>
+                <button class="tab-btn ${ternActiveTab === 'tIsoTab' ? 'active' : ''}" data-tab="tIsoTab" onclick="switchTernaryTab('tIsoTab')">等温面</button>
             </div>
-            <div id="tPtTab" class="tab-panel active">
+            <div id="tPtTab" class="tab-panel ${ternActiveTab === 'tPtTab' ? 'active' : ''}">
                 ${renderTernaryPoints()}
             </div>
-            <div id="tLnTab" class="tab-panel">
+            <div id="tLnTab" class="tab-panel ${ternActiveTab === 'tLnTab' ? 'active' : ''}">
                 ${renderTernaryLines()}
             </div>
-            <div id="tSfTab" class="tab-panel">
+            <div id="tSfTab" class="tab-panel ${ternActiveTab === 'tSfTab' ? 'active' : ''}">
                 ${renderTernarySurfaces()}
             </div>
-            <div id="tIsoTab" class="tab-panel">
+            <div id="tIsoTab" class="tab-panel ${ternActiveTab === 'tIsoTab' ? 'active' : ''}">
                 ${renderTernaryIso()}
             </div>
         </div>
@@ -43,6 +45,9 @@ function renderTernaryToolbar() {
             <button class="btn" onclick="loadTernary()">📂 还原相图</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-left:auto;">
                 <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 显示坐标信息
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 显示坐标轴
             </label>
         </div>
         <div class="caption">数据: ${state.points.length}点 / ${state.lines.length}线 / ${state.surfs.length}面 | 等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
@@ -144,6 +149,7 @@ function renderTernaryIso() {
 }
 
 function switchTernaryTab(tabId) {
+    ternActiveTab = tabId;
     document.querySelectorAll('#ternaryToolbar .tab-panel').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('#ternaryToolbar .tab-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
@@ -478,15 +484,15 @@ function renderTernary3d() {
     }
 
     const sceneConfig = {
-        xaxis: { range: [-0.12, 1.12] },
-        yaxis: { range: [-0.12, TERN_Y_TOP + 0.12] },
-        zaxis: { title: 'T °C', range: [TERN_MIN, TERN_MAX] },
+        xaxis: { visible: ternShowAxes, range: [-0.12, 1.12] },
+        yaxis: { visible: ternShowAxes, range: [-0.12, TERN_Y_TOP + 0.12] },
+        zaxis: { visible: ternShowAxes, title: 'T °C', range: [TERN_MIN, TERN_MAX] },
         aspectmode: 'manual',
         aspectratio: { x: 1, y: 1, z: 0.5 },
         camera: { eye: { x: 1.5, y: 1.5, z: 1.0 } },
     };
 
-    if (ternShowCoords) {
+    if (ternShowCoords && ternShowAxes) {
         sceneConfig.xaxis = {
             visible: true, range: [-0.12, 1.12],
             title: { text: 'B →' },
