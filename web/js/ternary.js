@@ -24,7 +24,6 @@ function renderTernaryToolbar() {
                 <button class="tab-btn ${ternActiveTab === 'tPtTab' ? 'active' : ''}" data-tab="tPtTab" onclick="switchTernaryTab('tPtTab')">特征点</button>
                 <button class="tab-btn ${ternActiveTab === 'tLnTab' ? 'active' : ''}" data-tab="tLnTab" onclick="switchTernaryTab('tLnTab')">边界线</button>
                 <button class="tab-btn ${ternActiveTab === 'tSfTab' ? 'active' : ''}" data-tab="tSfTab" onclick="switchTernaryTab('tSfTab')">曲面</button>
-                <button class="tab-btn ${ternActiveTab === 'tIsoTab' ? 'active' : ''}" data-tab="tIsoTab" onclick="switchTernaryTab('tIsoTab')">等温面</button>
             </div>
             <div id="tPtTab" class="tab-panel ${ternActiveTab === 'tPtTab' ? 'active' : ''}">
                 ${renderTernaryPoints()}
@@ -34,9 +33,6 @@ function renderTernaryToolbar() {
             </div>
             <div id="tSfTab" class="tab-panel ${ternActiveTab === 'tSfTab' ? 'active' : ''}">
                 ${renderTernarySurfaces()}
-            </div>
-            <div id="tIsoTab" class="tab-panel ${ternActiveTab === 'tIsoTab' ? 'active' : ''}">
-                ${renderTernaryIso()}
             </div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
@@ -50,6 +46,7 @@ function renderTernaryToolbar() {
                 <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 显示坐标轴
             </label>
         </div>
+        ${ternBuildIsoSlider()}
         <div class="caption">数据: ${state.points.length}点 / ${state.lines.length}线 / ${state.surfs.length}面 | 等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
         <div id="ternHoverInfo" style="margin-top:6px;font-size:12px;min-height:20px;color:#666;"></div>
     `;
@@ -138,25 +135,20 @@ function renderTernarySurfaces() {
     return items;
 }
 
-function renderTernaryIso() {
-    const state = AppState.ternary;
-    let html = '<div class="form-row" style="margin-bottom:8px;">';
-    html += `<div class="form-group"><input type="number" id="isoTemp" value="${state.isoTemp || 600}" step="50" min="${TERN_MIN}" max="${TERN_MAX}"></div>`;
-    html += '<div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addIso()">生成等温面</button></div>';
-    html += '<div class="form-group" style="flex:0 0 auto;"><button class="btn" onclick="clearIso()">清除等温面</button></div>';
-    html += '</div>';
-    if (state.isoHistory.length > 0) {
-        html += `<div class="caption">历史: ${state.isoHistory.map(t => t + '°C').join(', ')}</div>`;
-    }
-    return html;
+function removeTernSf(idx) {
+    AppState.ternary.surfs.splice(idx, 1);
+    renderTernary();
+}
+
+function onTernSfEdit(idx, raw) {
+    const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
+    AppState.ternary.surfs[idx].line_labels = parts;
+    renderTernaryCharts();
 }
 
 function switchTernaryTab(tabId) {
     ternActiveTab = tabId;
-    document.querySelectorAll('#ternaryToolbar .tab-panel').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('#ternaryToolbar .tab-btn').forEach(el => el.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-    document.querySelector(`#ternaryToolbar .tab-btn[data-tab="${tabId}"]`).classList.add('active');
+    renderTernaryToolbar();
 }
 
 function onTernPtEdit(idx, field, value) {
@@ -215,13 +207,13 @@ function removeTernLn(idx) {
 
 function addTernSurface() {
     const state = AppState.ternary;
-    const raw = document.getElementById('sfInput').value.trim().replace(/\s+/g, '').toUpperCase();
+    const raw = document.getElementById('sfInput').value.trim().toUpperCase();
     if (raw.length < 3 || raw.length > 4) {
-        alert('请输入3或4个顶点标签（如 ABC 或 ADGF），自动闭合为边线对');
+        alert('请输入3或4个顶点标签，如 ABC 或 ADGF');
         return;
     }
 
-    // Auto-split into pairs: "ABC" → AB, BC, CA; "ADGF" → AD, DG, GF, FA
+    // Auto-expand vertex sequence to edge pairs: "ABC" → AB, BC, CA
     const pairs = [];
     for (let i = 0; i < raw.length; i++) {
         pairs.push(raw[i] + raw[(i + 1) % raw.length]);
@@ -258,30 +250,31 @@ function addTernSurface() {
     renderTernary();
 }
 
-function removeTernSf(idx) {
-    AppState.ternary.surfs.splice(idx, 1);
-    renderTernary();
-}
-
-function onTernSfEdit(idx, raw) {
-    const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
-    AppState.ternary.surfs[idx].line_labels = parts;
-    renderTernaryCharts();
-}
-
-function addIso() {
+function ternBuildIsoSlider() {
     const state = AppState.ternary;
-    const temp = parseFloat(document.getElementById('isoTemp').value) || 600;
-    state.isoTemp = temp;
-    if (!state.isoHistory.includes(temp)) state.isoHistory.push(temp);
-    renderTernaryToolbar();
-    renderTernaryCharts();
+    const val = state.isoTemp != null ? state.isoTemp : 650;
+    const step = 10;
+    return `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;white-space:nowrap;color:#555;">等温面 T</span>
+        <input type="range" id="ternIsoSlider" min="${TERN_MIN}" max="${TERN_MAX}" value="${val}" step="${step}"
+            oninput="ternIsoSliderChange(parseInt(this.value), 'slider')" style="flex:1;accent-color:#FF8C00;">
+        <input type="number" id="ternIsoInput" value="${val}" min="${TERN_MIN}" max="${TERN_MAX}" step="${step}"
+            onchange="ternIsoSliderChange(parseInt(this.value)||${TERN_MIN}, 'input')"
+            style="width:65px;font-size:12px;padding:2px 4px;text-align:center;color:#FF8C00;font-weight:600;border:1px solid #ddd;border-radius:4px;">
+    </div>`;
 }
 
-function clearIso() {
-    AppState.ternary.isoTemp = null;
-    AppState.ternary.isoHistory = [];
-    renderTernaryToolbar();
+function ternIsoSliderChange(val, src) {
+    const state = AppState.ternary;
+    state.isoTemp = val;
+    if (src !== 'slider') {
+        const slider = document.getElementById('ternIsoSlider');
+        if (slider) slider.value = val;
+    }
+    if (src !== 'input') {
+        const input = document.getElementById('ternIsoInput');
+        if (input) input.value = val;
+    }
     renderTernaryCharts();
 }
 
@@ -290,7 +283,6 @@ function clearTernary() {
     AppState.ternary.lines = [];
     AppState.ternary.surfs = [];
     AppState.ternary.isoTemp = null;
-    AppState.ternary.isoHistory = [];
     renderTernary();
 }
 
@@ -326,7 +318,6 @@ function loadTernary() {
                 state.lines = (data.lines || []).map(l => ({ start: l.start, end: l.end, curve_x: l.curve_x, curve_y: l.curve_y, curve_z: l.curve_z }));
                 state.surfs = (data.surfaces || []).map(s => ({ line_labels: s.line_labels }));
                 state.isoTemp = null;
-                state.isoHistory = [];
                 renderTernary();
             } catch(err) {
                 alert('文件格式错误');

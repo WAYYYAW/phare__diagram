@@ -24,7 +24,6 @@ const AppState = {
         lines: [],
         surfs: [],
         isoTemp: null,
-        isoHistory: [],
     }
 };
 
