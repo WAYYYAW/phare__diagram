@@ -36,7 +36,19 @@ function switchPage(name) {
     if (name === 'binary') renderBinary();
     else if (name === 'ternary') renderTernary();
     else if (name === 'triangle') renderTriangle();
+    // Resize Plotly charts after page switch (container may have been display:none)
+    setTimeout(() => resizeAllPlotlyCharts(), 100);
 }
+
+function resizeAllPlotlyCharts() {
+    document.querySelectorAll('.js-plotly-plot').forEach(el => {
+        if (el._fullLayout && el._fullLayout._size) {
+            Plotly.Plots.resize(el);
+        }
+    });
+}
+
+window.addEventListener('resize', resizeAllPlotlyCharts);
 
 function nextAutoLabel(existing) {
     const set = new Set(existing);

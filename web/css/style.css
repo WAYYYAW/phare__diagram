@@ -450,6 +450,8 @@ select:focus {
     border-radius: 8px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     padding: 8px;
+    width: 100%;
+    min-height: 300px;
 }
 
 .grid-3 {
@@ -503,10 +505,12 @@ select:focus {
 
 .ternary-3d {
     flex: 3;
+    min-height: 480px;
 }
 
 .ternary-2d {
     flex: 1.5;
+    min-height: 360px;
 }
 
 @media (max-width: 900px) {
@@ -518,5 +522,15 @@ select:focus {
     }
     .ternary-layout {
         flex-direction: column;
+    }
+    .ternary-3d {
+        flex: none;
+        width: 100%;
+        min-height: 400px;
+    }
+    .ternary-2d {
+        flex: none;
+        width: 100%;
+        min-height: 340px;
     }
 }
