@@ -24,7 +24,7 @@ function renderBinarySidebar() {
         </div>
 
         <div class="card">
-            <div class="card-title">数据管理</div>
+            <div class="card-title">数据管理面板</div>
             <div class="tabs">
                 <button class="tab-btn active" data-tab="ptTab" onclick="switchBinaryTab('ptTab')">特征点</button>
                 <button class="tab-btn" data-tab="lnTab" onclick="switchBinaryTab('lnTab')">边界线</button>
@@ -48,7 +48,7 @@ function renderBinarySidebar() {
             <div class="form-group">
                 <label class="toggle-label">
                     <input type="checkbox" ${state.showRegionFill ? 'checked' : ''} onchange="onToggleRegionFill(this.checked)">
-                    相区自动上色
+                    相区自动上色（实验性）
                 </label>
             </div>
             ${state.calcMode ? `
@@ -442,9 +442,9 @@ function renderBinaryChart() {
         dragmode: 'pan',
         plot_bgcolor: 'white',
         legend: {
-            orientation: 'v',
-            yanchor: 'top', y: 0.98,
-            xanchor: 'left', x: 0.01,
+            orientation: 'h',
+            yanchor: 'top', y: -0.18,
+            xanchor: 'center', x: 0.5,
             bgcolor: 'rgba(255,255,255,0.65)',
             bordercolor: '#CCCCCC',
             borderwidth: 1,

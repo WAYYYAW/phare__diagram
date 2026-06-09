@@ -38,12 +38,12 @@ function renderTernaryToolbar() {
         <div style="display:flex;gap:8px;margin-bottom:12px;">
             <button class="btn btn-danger" onclick="clearTernary()">🗑 清空全部</button>
             <button class="btn btn-primary" onclick="saveTernary()">💾 保存相图</button>
-            <button class="btn" onclick="loadTernary()">📂 还原相图</button>
+            <button class="btn" onclick="loadTernary()">📂 导入相图</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-left:auto;">
-                <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 显示坐标信息
+                <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 点击显示坐标
             </label>
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-                <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 显示坐标轴
+                <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 绘制坐标轴
             </label>
         </div>
         ${ternBuildIsoSlider()}
@@ -117,7 +117,7 @@ function renderTernaryLines() {
 
 function renderTernarySurfaces() {
     const state = AppState.ternary;
-    let items = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="顶点标签序列，如 ABC 或 ADGF"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
+    let items = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="标签序列，如 ABC 或 ADGF"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
 
     if (state.surfs.length > 0) {
         items += '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th></th></tr></thead><tbody>';

@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>相图绘制工具</title>
+    <title>简单相图工具</title>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="app-header">
-        <h1>相图分析工具 — Go + WebAssembly</h1>
+        <h1>相图分析工具</h1>
         <span class="wasm-status" id="wasmStatus">WASM 加载中...</span>
     </div>
 
     <div class="nav-bar">
-        <button class="nav-btn active" data-page="binary" onclick="switchPage('binary')">二元 (2D)</button>
-        <button class="nav-btn" data-page="ternary" onclick="switchPage('ternary')">三元 (3D)</button>
-        <button class="nav-btn" data-page="triangle" onclick="switchPage('triangle')">浓度三角形</button>
+        <button class="nav-btn active" data-page="binary" onclick="switchPage('binary')">二元相图</button>
+        <button class="nav-btn" data-page="ternary" onclick="switchPage('ternary')">三元相图</button>
+        <button class="nav-btn" data-page="triangle" onclick="switchPage('triangle')">浓度三角</button>
     </div>
 
     <!-- Binary Page -->
@@ -60,7 +60,7 @@
                 go.run(result.instance);
             })
             .catch(err => {
-                document.getElementById('wasmStatus').textContent = 'WASM 加载失败';
+                document.getElementById('wasmStatus').textContent = 'WASM 加载失败，请更新你的浏览器';
                 console.error('WASM load error:', err);
             });
     </script>
