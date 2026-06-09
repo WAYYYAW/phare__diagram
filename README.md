@@ -132,3 +132,22 @@ make bundle
 - **材料科学教学**：直观展示合金相图，支持杠杆定律交互计算
 - **科研辅助**：三元相图 3D 可视化，等温面切割分析
 - **相图设计**：参数化模板，快速查看成分/温度变化对相图的影响
+
+## 用户分析上报 (Analytics)
+
+页面加载时自动采集以下信息并 POST 至服务端（默认 `http://127.0.0.1:8080/analytics`），仅执行一次：
+
+| 字段 | 来源 |
+|------|------|
+| 屏幕分辨率 | `screen.width × screen.height` |
+| 视口尺寸 | `window.innerWidth × innerHeight` |
+| 设备像素比 | `window.devicePixelRatio` |
+| 操作系统 | `navigator.platform` |
+| 语言 | `navigator.language` |
+| 浏览器 UA | `navigator.userAgent` |
+| 时区 | `Intl.DateTimeFormat.resolvedOptions().timeZone` |
+| CPU 核心数 | `navigator.hardwareConcurrency` |
+| 来源 URL | `document.referrer` / `location.href` |
+| 时间戳 | ISO 8601 |
+
+**实现**：`web/js/analytics.js`（IIFE，`localStorage` 防重复，`XMLHttpRequest` POST）

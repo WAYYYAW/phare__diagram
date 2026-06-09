@@ -35,7 +35,7 @@ func main() {
 		panic(err)
 	}
 
-	jsFiles := []string{"wasm_exec.js", "app.js", "binary.js", "ternary.js", "triangle.js"}
+	jsFiles := []string{"wasm_exec.js", "app.js", "binary.js", "ternary.js", "triangle.js", "analytics.js"}
 	var jsParts [][]byte
 	for _, f := range jsFiles {
 		b, err := os.ReadFile(filepath.Join(webDir, "js", f))
