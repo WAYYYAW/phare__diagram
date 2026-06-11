@@ -111,9 +111,20 @@ func main() {
 const wasmBase64 = "%s";
 (async () => {
   try {
+    const t0 = performance.now();
     const binary = Uint8Array.from(atob(wasmBase64), c => c.charCodeAt(0));
+    const t1 = performance.now();
     const { instance } = await WebAssembly.instantiate(binary, go.importObject);
+    const t2 = performance.now();
     go.run(instance);
+    const t3 = performance.now();
+    // Expose timing for analytics.js to pick up and report
+    window.__xubenWasmTiming = {
+      decodeMs:  Math.round(t1 - t0),
+      compileMs: Math.round(t2 - t1),
+      initMs:    Math.round(t3 - t2),
+      totalMs:   Math.round(t3 - t0),
+    };
   } catch (err) {
     document.getElementById('wasmStatus').textContent = 'WASM 加载失败';
     console.error('WASM load error:', err);
