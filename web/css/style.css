@@ -501,18 +501,47 @@ select:focus {
 .ternary-layout {
     display: flex;
     gap: 16px;
+    max-width: 1600px;
+    margin: 0 auto;
 }
 
 .ternary-3d {
-    flex: 3;
-    min-height: 480px;
+    flex: 2;
+    min-height: 580px;
+    display: flex;
+    flex-direction: column;
+}
+
+.ternary-3d .chart-container {
+    flex: 1;
+    min-height: 0;
 }
 
 .ternary-2d {
-    flex: 1.5;
-    min-height: 360px;
+    flex: 1;
+    min-height: 480px;
+    display: flex;
+    flex-direction: column;
 }
 
+.ternary-2d .chart-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Tablet landscape — side-by-side with tighter ratio */
+@media (max-width: 1200px) {
+    .ternary-3d {
+        flex: 1.5;
+        min-height: 500px;
+    }
+    .ternary-2d {
+        flex: 1;
+        min-height: 420px;
+    }
+}
+
+/* Tablet portrait / small desktop — keep side-by-side but shrink */
 @media (max-width: 900px) {
     .sidebar-layout {
         flex-direction: column;
@@ -520,17 +549,30 @@ select:focus {
     .sidebar {
         width: 100%;
     }
+    .ternary-3d {
+        min-height: 440px;
+    }
+    .ternary-2d {
+        min-height: 380px;
+    }
+}
+
+/* Narrow screens — stack vertically, full width */
+@media (max-width: 768px) {
     .ternary-layout {
         flex-direction: column;
+        gap: 12px;
     }
     .ternary-3d {
         flex: none;
         width: 100%;
-        min-height: 400px;
+        min-height: 440px;
+        max-height: 65vh;
     }
     .ternary-2d {
         flex: none;
         width: 100%;
-        min-height: 340px;
+        min-height: 400px;
+        max-height: 55vh;
     }
 }
