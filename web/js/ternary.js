@@ -528,7 +528,7 @@ function renderTernary3d() {
 
     const layout = {
         scene: sceneConfig,
-        height: 560,
+        autosize: true,
         margin: { l: 0, r: 0, t: 30, b: 0 },
         legend: { orientation: 'h', yanchor: 'top', y: -0.12, xanchor: 'center', x: 0.5, font: { size: 9 } },
         hovermode: ternShowCoords ? 'closest' : false,
@@ -635,18 +635,27 @@ function renderTernary2d() {
                         const a = [v0, v1, v2][e], b = [v0, v1, v2][(e + 1) % 3];
                         if ((a[2] - isoTemp) * (b[2] - isoTemp) < 0) ips.push(lerp(a, b, a[2], b[2]));
                     }
-                    if (ips.length === 2) sfContour.push([ips[0], ips[1]]);
-
-                    if (above === 1) {
-                        const A = up[0];
-                        abovePolys.push(poly2d(A[0], A[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                        belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                        belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[1][0], ips[1][1], dn[1][0], dn[1][1]));
+                    if (ips.length === 2) {
+                        sfContour.push([ips[0], ips[1]]);
+                        if (above === 1) {
+                            const A = up[0];
+                            abovePolys.push(poly2d(A[0], A[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[1][0], ips[1][1], dn[1][0], dn[1][1]));
+                        } else {
+                            const B = dn[0];
+                            abovePolys.push(poly2d(up[0][0], up[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            abovePolys.push(poly2d(up[0][0], up[0][1], ips[1][0], ips[1][1], up[1][0], up[1][1]));
+                            belowPolys.push(poly2d(B[0], B[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                        }
                     } else {
-                        const B = dn[0];
-                        abovePolys.push(poly2d(up[0][0], up[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                        abovePolys.push(poly2d(up[0][0], up[0][1], ips[1][0], ips[1][1], up[1][0], up[1][1]));
-                        belowPolys.push(poly2d(B[0], B[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                        // Edge case: vertex exactly on plane (z===isoTemp),
+                        // edge crossing detection fails. Treat by majority.
+                        if (above >= 2) {
+                            abovePolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                        } else {
+                            belowPolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                        }
                     }
                 }
             });
@@ -743,7 +752,7 @@ function renderTernary2d() {
     const layout = {
         xaxis: { visible: false, range: [-0.06, 1.06], scaleanchor: 'y', scaleratio: 1 },
         yaxis: { visible: false, range: [-0.06, TERN_Y_TOP + 0.06] },
-        height: 440,
+        autosize: true,
         margin: { l: 10, r: 10, t: 30, b: 10 },
         plot_bgcolor: 'white',
         showlegend: true,
