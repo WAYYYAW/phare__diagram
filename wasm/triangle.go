@@ -31,7 +31,7 @@ func triPointInTriangleJS(this js.Value, args []js.Value) interface{} {
 		if u >= -1e-10 && v >= -1e-10 && u+v <= 1+1e-10 {
 			ok = true
 			ua, ub := math.Round(u*100), math.Round(v*100)
-			a, b, c = ua, ub, 100-ua-ub
+			a, b, c = 100-ua-ub, ub, ua
 		}
 	}
 	return jsJSON(map[string]interface{}{"ok": ok, "a": a, "b": b, "c": c})
