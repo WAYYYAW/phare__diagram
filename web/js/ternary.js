@@ -194,8 +194,8 @@ function addTernLn() {
     const labels = new Set(state.points.map(p => p.label));
     if (!labels.has(start)) { alert(`起点 '${start}' 不存在`); return; }
     if (!labels.has(end)) { alert(`终点 '${end}' 不存在`); return; }
-    const pair = [start, end].sort().join('|');
-    if (state.lines.some(l => [l.start, l.end].sort().join('|') === pair)) { alert('两点间已存在连线'); return; }
+    const pair = [start, end, curve_x, curve_y, curve_z].sort().join('|');
+    if (state.lines.some(l => [l.start, l.end, l.curve_x, l.curve_y, l.curve_z].sort().join('|') === pair)) { alert('两点间已存在曲率z相同的连线'); return; }
     state.lines.push({ start, end, curve_x, curve_y, curve_z });
     renderTernary();
 }
@@ -240,7 +240,11 @@ function addTernSurface() {
                 found = i; break;
             }
         }
-        if (found < 0) { alert(`未找到边界线 ${pair}`); return; }
+        if (found < 0) {
+            alert(`边界线${pair}不存在，已自动添加`);
+            state.lines.push({ start: pair[0], end: pair[1], curve_x: 0, curve_y: 0, curve_z: 0 });
+            found = state.lines.length - 1;
+        }
         if (seen.has(found)) { alert(`边界线 ${pair} 重复使用`); return; }
         seen.add(found);
         indices.push(found);
