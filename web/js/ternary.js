@@ -6,6 +6,26 @@ const SURFACE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0',
 let ternShowCoords = false;
 let ternActiveTab = 'tPtTab';
 let ternShowAxes = false;
+let ternCollapsed = { pt: false, ln: false, sf: false };
+
+// Collapsible section helpers
+function toggleCollapse(sectionEl, key) {
+    sectionEl.classList.toggle('collapsed');
+    ternCollapsed[key] = sectionEl.classList.contains('collapsed');
+}
+
+function collapsibleWrap(label, count, content, key) {
+    var collapsed = ternCollapsed[key] ? ' collapsed' : '';
+    var icon = ternCollapsed[key] ? '▶' : '▼';
+    return '<div class="collapsible-section' + collapsed + '" data-key="' + key + '">' +
+        '<div class="collapsible-header" onclick="toggleCollapse(this.parentElement,\'' + key + '\')">' +
+            '<span class="collapsible-icon">' + icon + '</span>' +
+            '<span>' + label + '</span>' +
+            '<span class="collapsible-badge">' + count + '</span>' +
+        '</div>' +
+        '<div class="collapsible-body">' + content + '</div>' +
+    '</div>';
+}
 
 function renderTernary() {
     const state = AppState.ternary;
@@ -68,19 +88,27 @@ function renderTernaryPoints() {
         </tr>`;
     });
 
-    return `
-        <div class="grid-4" style="margin-bottom:8px;">
-            <div class="form-group"><input type="number" id="tPtA" value="33.3" step="1" min="0" max="100" placeholder="A%"></div>
-            <div class="form-group"><input type="number" id="tPtB" value="33.3" step="1" min="0" max="100" placeholder="B%"></div>
-            <div class="form-group"><input type="number" id="tPtT" value="800" step="10" placeholder="T °C"></div>
-            <div class="form-group"><input type="text" id="tPtLabel" placeholder="标签（留空自动）"></div>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="addTernPt()" style="margin-bottom:8px;">➕ 添加点</button>
-        <table class="data-table">
+    var tableHTML = rows
+        ? `<table class="data-table">
             <thead><tr><th>标签</th><th>A%</th><th>B%</th><th>C%</th><th>T °C</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="6" class="empty-state">暂无数据</td></tr>'}</tbody>
-        </table>
-    `;
+            <tbody>${rows}</tbody></table>`
+        : '<div class="empty-state">暂无数据</div>';
+
+    var body = '<div class="grid-4" style="margin-bottom:8px;">' +
+            '<div class="form-group"><input type="number" id="tPtA" value="33.3" step="1" min="0" max="100" placeholder="A%"></div>' +
+            '<div class="form-group"><input type="number" id="tPtB" value="33.3" step="1" min="0" max="100" placeholder="B%"></div>' +
+            '<div class="form-group"><input type="number" id="tPtT" value="800" step="10" placeholder="T °C"></div>' +
+            '<div class="form-group"><input type="text" id="tPtLabel" placeholder="标签（留空自动）"></div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-full" onclick="addTernPt()" style="margin-bottom:8px;">➕ 添加点</button>';
+
+    if (rows) {
+        body += collapsibleWrap('特征点列表', state.points.length + '个', tableHTML, 'pt');
+    } else {
+        body += tableHTML;
+    }
+
+    return body;
 }
 
 function renderTernaryLines() {
@@ -97,42 +125,49 @@ function renderTernaryLines() {
         </tr>`;
     });
 
-    return `
-        <div class="grid-4" style="margin-bottom:8px;">
-            <div class="form-group"><input type="text" id="tLnStart" placeholder="起点标签"></div>
-            <div class="form-group"><input type="text" id="tLnEnd" placeholder="终点标签"></div>
-            <div class="form-group"><input type="number" id="tLnCx" value="0" step="5" placeholder="曲率X"></div>
-            <div class="form-group"><input type="number" id="tLnCy" value="0" step="5" placeholder="曲率Y"></div>
-        </div>
-        <div class="grid-2" style="margin-bottom:8px;">
-            <div class="form-group"><input type="number" id="tLnCz" value="0" step="5" placeholder="曲率Z"></div>
-            <div class="form-group"><button class="btn btn-primary btn-full" onclick="addTernLn()">➕ 添加线</button></div>
-        </div>
-        <table class="data-table">
+    var tableHTML = rows
+        ? `<table class="data-table">
             <thead><tr><th>起点</th><th>终点</th><th>曲率X</th><th>曲率Y</th><th>曲率Z</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="6" class="empty-state">暂无数据</td></tr>'}</tbody>
-        </table>
-    `;
+            <tbody>${rows}</tbody></table>`
+        : '<div class="empty-state">暂无数据</div>';
+
+    var body = '<div class="grid-4" style="margin-bottom:8px;">' +
+            '<div class="form-group"><input type="text" id="tLnStart" placeholder="起点标签"></div>' +
+            '<div class="form-group"><input type="text" id="tLnEnd" placeholder="终点标签"></div>' +
+            '<div class="form-group"><input type="number" id="tLnCx" value="0" step="5" placeholder="曲率X"></div>' +
+            '<div class="form-group"><input type="number" id="tLnCy" value="0" step="5" placeholder="曲率Y"></div>' +
+        '</div>' +
+        '<div class="grid-2" style="margin-bottom:8px;">' +
+            '<div class="form-group"><input type="number" id="tLnCz" value="0" step="5" placeholder="曲率Z"></div>' +
+            '<div class="form-group"><button class="btn btn-primary btn-full" onclick="addTernLn()">➕ 添加线</button></div>' +
+        '</div>';
+
+    if (rows) {
+        body += collapsibleWrap('边界线列表', state.lines.length + '条', tableHTML, 'ln');
+    } else {
+        body += tableHTML;
+    }
+
+    return body;
 }
 
 function renderTernarySurfaces() {
     const state = AppState.ternary;
-    let items = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="标签序列，如 ABC 或 ADGF"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
+    var formHTML = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="标签序列，如 ABC 或 ADGF"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
 
     if (state.surfs.length > 0) {
-        items += '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th></th></tr></thead><tbody>';
+        var rows = '';
         state.surfs.forEach((s, i) => {
-            items += `<tr>
-                <td style="vertical-align:middle;">${i+1}</td>
-                <td><input type="text" value="${s.line_labels.join(', ')}" onchange="onTernSfEdit(${i}, this.value)"></td>
-                <td><button class="btn btn-danger" onclick="removeTernSf(${i})" style="padding:2px 6px;font-size:11px;">✕</button></td>
-            </tr>`;
+            rows += '<tr>' +
+                '<td style="vertical-align:middle;">' + (i+1) + '</td>' +
+                '<td><input type="text" value="' + s.line_labels.join(', ') + '" onchange="onTernSfEdit(' + i + ', this.value)"></td>' +
+                '<td><button class="btn btn-danger" onclick="removeTernSf(' + i + ')" style="padding:2px 6px;font-size:11px;">✕</button></td>' +
+            '</tr>';
         });
-        items += '</tbody></table>';
-    } else {
-        items += '<div class="empty-state">暂无曲面</div>';
+        var tableHTML = '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+        return formHTML + collapsibleWrap('曲面列表', state.surfs.length + '个', tableHTML, 'sf');
     }
-    return items;
+    return formHTML + '<div class="empty-state">暂无曲面</div>';
 }
 
 function removeTernSf(idx) {
