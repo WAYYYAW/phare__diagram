@@ -6,9 +6,10 @@
 
 | 层 | 技术 |
 |---|---|
-| **计算引擎** | Go 1.21 — 编译为 WASM，通过 `syscall/js` 桥接 |
-| **前端可视化** | Plotly.js 2D/3D 图表 + Canvas 2D 渲染 |
+| **计算引擎** | Go 1.25 — 编译为 WASM，通过 `syscall/js` 桥接 |
+| **前端可视化** | Plotly.js 2.32.0 2D/3D 图表 + Canvas 2D 渲染 |
 | **前端框架** | 原生 JavaScript (无框架依赖) |
+| **数据存储** | SQLite (WAL 模式，通过 modernc.org/sqlite 纯 Go 驱动) |
 | **部署选项** | 开发模式：Go 静态文件服务器；生产模式：单文件 HTML（内嵌 WASM base64） |
 
 ## 核心功能 — 3 个模块
@@ -51,7 +52,9 @@ xuben/
 ├── server.go                   # 静态文件服务器 (:8080)
 ├── Makefile                    # 编译构建
 ├── go.mod                      # Go 模块定义
-├── cmd/bundle/main.go          # 单文件 HTML 打包工具
+├── cmd/
+│   ├── bundle/main.go          # 单文件 HTML 打包工具
+│   └── analytics-server/main.go # 用户分析数据收集服务 (:7999)
 ├── wasm/                       # Go WASM 计算引擎
 │   ├── main.go                 # WASM 入口 + JS 函数注册
 │   ├── types.go                # 数据结构定义
@@ -68,6 +71,7 @@ xuben/
         ├── binary.js           # 二元相图前端
         ├── ternary.js          # 三元相图前端
         ├── triangle.js         # 浓度三角形前端
+        ├── analytics.js        # 用户行为采集 (page_view / perf / heartbeat / unload)
         └── wasm_exec.js        # Go WASM 运行时
 ```
 
@@ -86,6 +90,13 @@ make run
 make wasm     # Go → WASM 编译
 make server   # 编译静态文件服务器
 ./xuben-server
+```
+
+### 启动分析服务（可选）
+
+```bash
+go run ./cmd/analytics-server/
+# 监听 http://localhost:7999
 ```
 
 ### 生成单文件 HTML（无需服务器）
@@ -136,19 +147,47 @@ make bundle
 
 ## 用户分析上报 (Analytics)
 
-页面加载时自动采集以下信息并 POST 至服务端（默认 `http://127.0.0.1:8080/analytics`），仅执行一次：
+项目包含独立的分析数据收集服务，使用 SQLite 持久化存储。
 
-| 字段 | 来源 |
-|------|------|
-| 屏幕分辨率 | `screen.width × screen.height` |
-| 视口尺寸 | `window.innerWidth × innerHeight` |
-| 设备像素比 | `window.devicePixelRatio` |
-| 操作系统 | `navigator.platform` |
-| 语言 | `navigator.language` |
-| 浏览器 UA | `navigator.userAgent` |
-| 时区 | `Intl.DateTimeFormat.resolvedOptions().timeZone` |
-| CPU 核心数 | `navigator.hardwareConcurrency` |
-| 来源 URL | `document.referrer` / `location.href` |
-| 时间戳 | ISO 8601 |
+### 架构
 
-**实现**：`web/js/analytics.js`（IIFE，`localStorage` 防重复，`XMLHttpRequest` POST）
+```
+浏览器 (analytics.js)  ──HTTP GET──→  analytics-server (:7999)
+                                          │
+                                     SQLite (WAL)
+                                          │
+                                     Dashboard API
+```
+
+### 采集数据
+
+| 类型 | 字段 | 说明 |
+|------|------|------|
+| **page_view** | 屏幕分辨率、视口尺寸、设备像素比、操作系统、语言、时区、CPU 核心数、来源 URL | 首次加载时采集，`localStorage` 防重复 (1h) |
+| **perf** | FCP、LCP、WASM 加载耗时 (decode/compile/init)、UA 高熵值 (架构/型号/品牌) | 延迟采集，等 WASM 加载完成或 30s 超时后上报 |
+| **heartbeat** | seq、elapsed | 每 60s 一次 (页面可见时)，用于计算会话时长和跳出率 |
+| **page_unload** | elapsed | 页面关闭时通过 `fetch keepalive` 上报 |
+
+### 启动服务
+
+```bash
+cd cmd/analytics-server
+go run .
+
+# 或使用环境变量配置
+ANALYTICS_DB=analytics.db ANALYTICS_BIND=:7999 go run .
+```
+
+默认监听 `:7999`，数据存储在 `analytics.db`。
+
+### API 接口
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/analytics` | GET/POST | 接收分析数据 (image beacon GET / JSON POST) |
+| `/analytics/stats` | GET | 聚合统计 (PV/UV/会话/设备/性能分布等) |
+| `/analytics/view` | GET | 查看全部记录 |
+| `/analytics/day?date=YYYY-MM-DD` | GET | 按日期查询 |
+| `/analytics/search?field=x&value=y` | GET | 按字段筛选 |
+| `/analytics/dashboard` | GET | Dashboard 页面 |
+| `/health` | GET | 健康检查 |

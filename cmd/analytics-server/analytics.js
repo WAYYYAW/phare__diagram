@@ -460,8 +460,9 @@ function processData() {
         else { try { ref = new URL(ref).hostname; } catch(e) {} }
         referrerCount[ref] = (referrerCount[ref] || 0) + 1;
 
-        var ipBase = item.ip.split(':')[0];
-        var uvKey = visitorUid || sid || ipBase + '|' + osCategory;
+                var ipBase = item.ip.split(':')[0];
+                // Strictly group by UID; fallback to session_id for legacy data
+                var uvKey = visitorUid || ('_uidless_' + sid) || ipBase + '|' + osCategory;
         if (!uvMap.has(uvKey)) {
             uvMap.set(uvKey, {
                 ip: ipBase, device: osDetail, osCategory: osCategory,
