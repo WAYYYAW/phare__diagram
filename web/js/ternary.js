@@ -7,6 +7,15 @@ let ternShowCoords = false;
 let ternActiveTab = 'tPtTab';
 let ternShowAxes = false;
 let ternCollapsed = { pt: false, ln: false, sf: false };
+let ternHighPrecision = false;
+
+function togglePrecision(high) {
+    ternHighPrecision = high;
+    if (typeof xubenTernSetPrecision === 'function') {
+        xubenTernSetPrecision(high);
+    }
+    renderTernaryCharts();
+}
 
 // Collapsible section helpers
 function toggleCollapse(sectionEl, key) {
@@ -63,7 +72,10 @@ function renderTernaryToolbar() {
                 <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 点击显示坐标
             </label>
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-                <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 绘制坐标轴
+                <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 轴
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:#d97706;">
+                <input type="checkbox" id="ternPrecisionToggle" ${ternHighPrecision ? 'checked' : ''} onchange="togglePrecision(this.checked)"> 高精度
             </label>
         </div>
         ${ternBuildIsoSlider()}

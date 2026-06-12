@@ -215,6 +215,20 @@ func ternBuildBezierJS(this js.Value, args []js.Value) interface{} {
 	return jsJSON(map[string]interface{}{"xs": xs, "ys": ys, "zs": zs})
 }
 
+func ternSetPrecisionJS(this js.Value, args []js.Value) interface{} {
+	if len(args) < 1 {
+		return js.Undefined()
+	}
+	high := args[0].Bool()
+	TernHighPrecision = high
+	if high {
+		TernCoonsN = 60
+	} else {
+		TernCoonsN = 30
+	}
+	return js.ValueOf(true)
+}
+
 func ternBuildCoons3edgeJS(this js.Value, args []js.Value) interface{} {
 	if len(args) < 3 {
 		return js.Undefined()
@@ -280,6 +294,7 @@ func main() {
 	js.Global().Set("xubenGetRegionAt", js.FuncOf(getRegionAtJS))
 	js.Global().Set("xubenComputeTemplatePoints", js.FuncOf(computeTemplatePointsJS))
 	js.Global().Set("xubenTernBuildBezier", js.FuncOf(ternBuildBezierJS))
+	js.Global().Set("xubenTernSetPrecision", js.FuncOf(ternSetPrecisionJS))
 	js.Global().Set("xubenTernBuildCoons3Edge", js.FuncOf(ternBuildCoons3edgeJS))
 	js.Global().Set("xubenTernBuildCoons4Edge", js.FuncOf(ternBuildCoons4edgeJS))
 	js.Global().Set("xubenTernTo3d", js.FuncOf(ternTo3dJS))

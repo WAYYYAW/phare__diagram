@@ -479,6 +479,64 @@ select:focus {
     font-size: 13px;
 }
 
+/* ---- Collapsible sections ---- */
+.collapsible-section {
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    background: #f8f9fa;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    transition: background 0.15s;
+}
+
+.collapsible-header:hover {
+    background: #eef0f2;
+}
+
+.collapsible-icon {
+    display: inline-block;
+    width: 14px;
+    font-size: 10px;
+    transition: transform 0.2s;
+    color: #999;
+}
+
+.collapsible-body {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.collapsible-section.collapsed .collapsible-body {
+    display: none;
+}
+
+.collapsible-section.collapsed .collapsible-icon {
+    transform: rotate(-90deg);
+}
+
+.collapsible-badge {
+    display: inline-block;
+    background: #e0e0e0;
+    color: #666;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: auto;
+}
+
 .caption {
     font-size: 11px;
     color: #999;

@@ -10,8 +10,10 @@ const (
 	TernMin     = 0.0
 	TernMax     = 1300.0
 	TernBezierN = 30
-	TernCoonsN  = 20
 )
+
+var TernCoonsN = 30
+var TernHighPrecision = false
 
 func ternFrom3d(x, y float64) (float64, float64, float64) {
 	cRatio := y / YTop
@@ -112,6 +114,12 @@ func ternCurvePt(sp, ep TernaryPoint, cx, cy, cz, t float64) (float64, float64, 
 		ternBezierPt(p0z, p1z, p2z, tClamped)
 }
 
+// triIdx returns the array index for vertex (i,j) in a triangular grid with n divisions.
+// Formula: index = i*(2n+3-i)/2 + j
+func triIdx(n, i, j int) int {
+	return i*(2*n+3-i)/2 + j
+}
+
 func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []int) ([][3]float64, [][3]int) {
 	curveEnds := make([][2]string, len(lineIndices))
 	for idx, li := range lineIndices {
@@ -188,8 +196,8 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 	}
 
 	n := TernCoonsN
-	var pts3d [][3]float64
-	idxMap := make(map[[2]int]int)
+	totalVerts := (n + 1) * (n + 2) / 2
+	pts3d := make([][3]float64, totalVerts)
 
 	for i := 0; i <= n; i++ {
 		for j := 0; j <= n-i; j++ {
@@ -233,8 +241,7 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 				}
 			}
 
-			idxMap[[2]int{i, j}] = len(pts3d)
-			pts3d = append(pts3d, pt)
+			pts3d[triIdx(n, i, j)] = pt
 		}
 	}
 
@@ -244,9 +251,9 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 			if n-i-j <= 0 {
 				continue
 			}
-			tris = append(tris, [3]int{idxMap[[2]int{i, j}], idxMap[[2]int{i + 1, j}], idxMap[[2]int{i, j + 1}]})
+			tris = append(tris, [3]int{triIdx(n, i, j), triIdx(n, i+1, j), triIdx(n, i, j+1)})
 			if n-i-j > 1 {
-				tris = append(tris, [3]int{idxMap[[2]int{i + 1, j}], idxMap[[2]int{i + 1, j + 1}], idxMap[[2]int{i, j + 1}]})
+				tris = append(tris, [3]int{triIdx(n, i+1, j), triIdx(n, i+1, j+1), triIdx(n, i, j+1)})
 			}
 		}
 	}
@@ -346,10 +353,7 @@ func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 	}
 
 	n := TernCoonsN
-	P := make([][][3]float64, n)
-	for i := 0; i < n; i++ {
-		P[i] = make([][3]float64, n)
-	}
+	verts := make([][3]float64, n*n)
 
 	C00 := ept(iu0, v0, v1, 0.0)
 	C10 := ept(iu0, v0, v1, 1.0)
@@ -364,17 +368,11 @@ func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 			v := float64(j) / float64(n-1)
 			P0v := ept(iv0, v0, v3, v)
 			P1v := ept(iv1, v1, v2, v)
+			idx := i*n + j
 			for k := 0; k < 3; k++ {
-				P[i][j][k] = (1-v)*Pu0[k] + v*Pu1[k] + (1-u)*P0v[k] + u*P1v[k] -
+				verts[idx][k] = (1-v)*Pu0[k] + v*Pu1[k] + (1-u)*P0v[k] + u*P1v[k] -
 					((1-u)*(1-v)*C00[k] + u*(1-v)*C10[k] + (1-u)*v*C01[k] + u*v*C11[k])
 			}
-		}
-	}
-
-	var verts [][3]float64
-	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
-			verts = append(verts, P[i][j])
 		}
 	}
 
