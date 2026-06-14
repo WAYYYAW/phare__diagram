@@ -38,14 +38,31 @@
 
     <!-- Ternary Page -->
     <div class="page" id="page-ternary">
-        <div id="ternaryToolbar"></div>
-        <div class="ternary-layout">
-            <div class="ternary-3d">
-                <div class="chart-container" id="ternaryChart3d"></div>
+        <div class="ternary-shell">
+            <div class="ternary-stage">
+                <section class="ternary-chart-panel ternary-chart-panel-3d">
+                    <div class="ternary-chart-header">
+                        <div>
+                            <h2>三维相图</h2>
+                            <p>旋转查看曲面、边界线与等温面关系</p>
+                        </div>
+                    </div>
+                    <div class="ternary-3d-stage">
+                        <div class="chart-container" id="ternaryChart3d"></div>
+                        <div id="ternaryIsoControl" class="ternary-iso-dock"></div>
+                    </div>
+                </section>
+                <section class="ternary-chart-panel ternary-chart-panel-2d">
+                    <div class="ternary-chart-header">
+                        <div>
+                            <h2>二维投影</h2>
+                            <p>快速观察等温截线与相区填色</p>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="ternaryChart2d"></div>
+                </section>
             </div>
-            <div class="ternary-2d">
-                <div class="chart-container" id="ternaryChart2d"></div>
-            </div>
+            <aside id="ternaryToolbar" class="ternary-sidebar"></aside>
         </div>
     </div>
 

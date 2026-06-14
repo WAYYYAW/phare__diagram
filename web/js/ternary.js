@@ -487,6 +487,7 @@ function renderTernary() {
     ternInvalidateMeshCache();
     ternPendingIsoTemp = state.isoTemp;
     renderTernaryToolbar();
+    renderTernaryIsoControl();
     renderTernaryCharts();
 }
 
@@ -495,8 +496,18 @@ function renderTernaryToolbar() {
     const state = AppState.ternary;
 
     let html = `
-        <div class="card">
-            <div class="card-title">三元数据管理</div>
+        <div class="card ternary-sidebar-card">
+            <div class="ternary-sidebar-head">
+                <div>
+                    <div class="card-title">三元数据管理</div>
+                    <div class="ternary-sidebar-subtitle">编辑特征点、边界线和曲面，实时联动 3D / 2D 视图。</div>
+                </div>
+                <div class="ternary-sidebar-stats">
+                    <span>${state.points.length} 点</span>
+                    <span>${state.lines.length} 线</span>
+                    <span>${state.surfs.length} 面</span>
+                </div>
+            </div>
             <div class="tabs">
                 <button class="tab-btn ${ternActiveTab === 'tPtTab' ? 'active' : ''}" data-tab="tPtTab" onclick="switchTernaryTab('tPtTab')">特征点</button>
                 <button class="tab-btn ${ternActiveTab === 'tLnTab' ? 'active' : ''}" data-tab="tLnTab" onclick="switchTernaryTab('tLnTab')">边界线</button>
@@ -512,27 +523,37 @@ function renderTernaryToolbar() {
                 ${renderTernarySurfaces()}
             </div>
         </div>
-        <div class="ternary-toolbar-actions">
-            <button class="btn btn-danger" onclick="clearTernary()">🗑 清空全部</button>
-            <button class="btn btn-primary" onclick="saveTernary()">💾 保存相图</button>
-            <button class="btn" onclick="loadTernary()">📂 导入相图</button>
-            <label class="ternary-toggle coords">
+        <div class="card ternary-sidebar-card">
+            <div class="card-title">视图与操作</div>
+            <div class="ternary-toolbar-actions">
+                <button class="btn btn-danger" onclick="clearTernary()">🗑 清空全部</button>
+                <button class="btn btn-primary" onclick="saveTernary()">💾 保存相图</button>
+                <button class="btn" onclick="loadTernary()">📂 导入相图</button>
+            </div>
+            <div class="ternary-toggle-grid">
+                <label class="ternary-toggle coords">
                 <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 点击显示坐标
-            </label>
-            <label class="ternary-toggle">
+                </label>
+                <label class="ternary-toggle">
                 <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 轴
-            </label>
-            <label class="ternary-toggle">
+                </label>
+                <label class="ternary-toggle">
                 <input type="checkbox" ${ternShowIsoFill ? 'checked' : ''} onchange="ternShowIsoFill=this.checked;renderTernary2d();"> 等温上方填色
-            </label>
-            <label class="ternary-toggle precision">
+                </label>
+                <label class="ternary-toggle precision">
                 <input type="checkbox" id="ternPrecisionToggle" ${ternHighPrecision ? 'checked' : ''} onchange="togglePrecision(this.checked)"> 高精度
-            </label>
+                </label>
+            </div>
+            <div class="caption ternary-sidebar-caption">等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
         </div>
-        ${ternBuildIsoSlider()}
-        <div class="caption">数据: ${state.points.length}点 / ${state.lines.length}线 / ${state.surfs.length}面 | 等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
     `;
     container.innerHTML = html;
+}
+
+function renderTernaryIsoControl() {
+    const container = document.getElementById('ternaryIsoControl');
+    if (!container) return;
+    container.innerHTML = ternBuildIsoSlider();
 }
 
 function renderTernaryPoints() {
@@ -760,16 +781,19 @@ function ternBuildIsoSlider() {
     const val = state.isoTemp != null ? state.isoTemp : 650;
     const step = 10;
     return `<div class="ternary-iso-slider">
-        <span class="ternary-iso-label">等温面 T</span>
-        <input type="range" id="ternIsoSlider" min="${TERN_MIN}" max="${TERN_MAX}" value="${val}" step="${step}"
-            oninput="ternIsoSliderChange(parseInt(this.value), 'slider')"
-            onpointerdown="ternSetDragging(true)"
-            onpointerup="ternFinalizeIsoDrag(parseInt(this.value))"
-            onchange="ternFinalizeIsoDrag(parseInt(this.value))"
-            class="ternary-iso-range">
-        <input type="number" id="ternIsoInput" value="${val}" min="${TERN_MIN}" max="${TERN_MAX}" step="${step}"
-            onchange="ternIsoSliderChange(parseInt(this.value)||${TERN_MIN}, 'input')"
-            class="ternary-iso-input">
+        <div class="ternary-iso-track">
+            <input type="range" id="ternIsoSlider" min="${TERN_MIN}" max="${TERN_MAX}" value="${val}" step="${step}"
+                oninput="ternIsoSliderChange(parseInt(this.value), 'slider')"
+                onpointerdown="ternSetDragging(true)"
+                onpointerup="ternFinalizeIsoDrag(parseInt(this.value))"
+                onchange="ternFinalizeIsoDrag(parseInt(this.value))"
+                class="ternary-iso-range">
+        </div>
+        <div class="ternary-iso-readout">
+            <input type="number" id="ternIsoInput" value="${val}" min="${TERN_MIN}" max="${TERN_MAX}" step="${step}"
+                onchange="ternIsoSliderChange(parseInt(this.value)||${TERN_MIN}, 'input')"
+                class="ternary-iso-input">
+        </div>
     </div>`;
 }
 
@@ -911,21 +935,45 @@ function renderTernary3d() {
     // Points
     const validPts = state.points.filter(p => p.a != null);
     if (validPts.length > 0) {
-        const tx = [], ty = [], tz = [], tlbls = [], thovers = [];
+        const tx = [], ty = [], tz = [], thovers = [];
+        const labelX = [], labelY = [], labelZ = [], tlbls = [];
+        const leaderX = [], leaderY = [], leaderZ = [];
         validPts.forEach(p => {
             const r = XubenBridge.ternary.to3d(p.a, p.b, p.c, p.temp);
-            tx.push(r.x); ty.push(r.y); tz.push(r.z); tlbls.push(p.label);
+            const lx = r.x + 0.028;
+            const ly = r.y + 0.028;
+            const lz = Math.min(TERN_MAX, r.z + 32);
+            tx.push(r.x); ty.push(r.y); tz.push(r.z);
+            labelX.push(lx); labelY.push(ly); labelZ.push(lz); tlbls.push(p.label);
             thovers.push(`${p.label}<br>A=${p.a}% B=${p.b}% C=${p.c}%<br>T=${p.temp}°C`);
+            leaderX.push(r.x, lx, null);
+            leaderY.push(r.y, ly, null);
+            leaderZ.push(r.z, lz, null);
         });
         traces.push({
             x: tx, y: ty, z: tz,
-            mode: 'markers+text',
+            mode: 'markers',
             marker: { size: 6, color: '#E53935', line: { width: 1, color: 'white' } },
-            text: tlbls, textposition: 'top center',
-            textfont: { size: 11, color: '#C62828' },
             name: '数据点', type: 'scatter3d',
             hoverinfo: ternShowCoords ? 'text' : 'skip',
             hovertext: thovers,
+        });
+        traces.push({
+            x: leaderX, y: leaderY, z: leaderZ,
+            mode: 'lines',
+            line: { color: 'rgba(198,40,40,0.45)', width: 2 },
+            type: 'scatter3d',
+            showlegend: false,
+            hoverinfo: 'skip',
+        });
+        traces.push({
+            x: labelX, y: labelY, z: labelZ,
+            mode: 'text',
+            text: tlbls,
+            textfont: { size: 12, color: '#C62828' },
+            type: 'scatter3d',
+            showlegend: false,
+            hoverinfo: 'skip',
         });
     }
 
@@ -1020,8 +1068,8 @@ function renderTernary3d() {
         yaxis: { visible: ternShowAxes, range: [-0.12, TERN_Y_TOP + 0.12] },
         zaxis: { visible: ternShowAxes, title: 'T °C', range: [TERN_MIN, TERN_MAX] },
         aspectmode: 'manual',
-        aspectratio: { x: 1, y: 1, z: 0.5 },
-        camera: currentCamera || { eye: { x: 1.5, y: 1.5, z: 1.0 } },
+        aspectratio: { x: 1, y: 1, z: 0.75 },
+        camera: currentCamera || { eye: { x: 0.95, y: 0.95, z: 0.9 } },
     };
 
     if (ternShowCoords && ternShowAxes) {
@@ -1279,8 +1327,7 @@ function renderTernary2d() {
         autosize: true,
         margin: { l: 10, r: 10, t: 30, b: 10 },
         plot_bgcolor: 'white',
-        showlegend: true,
-        legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'center', x: 0.5, font: { size: 9 } },
+        showlegend: false,
     };
 
     Plotly.react('ternaryChart2d', traces, layout, { responsive: true });
