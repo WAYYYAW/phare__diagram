@@ -113,9 +113,28 @@ body {
     min-width: 0;
 }
 
+.binary-chart-frame {
+    position: relative;
+}
+
 #page-binary #binaryChart.chart-container {
     min-height: 520px;
     height: clamp(420px, 58vh, 560px);
+}
+
+.binary-calc-overlay {
+    position: absolute;
+    inset: 8px;
+    z-index: 5;
+    display: none;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: crosshair;
+}
+
+.binary-calc-overlay.active {
+    display: block;
 }
 
 .binary-legend {
@@ -969,6 +988,9 @@ select:focus {
         min-height: 420px;
         height: 64vh;
         padding: 4px;
+    }
+    .binary-calc-overlay {
+        inset: 4px;
     }
     .binary-legend {
         gap: 8px 10px;

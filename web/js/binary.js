@@ -1,4 +1,31 @@
 let binaryCollapsed = { pt: false };
+let binaryModelVersion = 0;
+let binaryBaseTraceCache = { key: null, traces: null };
+let binaryPayloadCache = { version: -1, pointsJSON: '', linesJSON: '' };
+
+function bumpBinaryModelVersion() {
+    binaryModelVersion += 1;
+    binaryBaseTraceCache.key = null;
+    binaryBaseTraceCache.traces = null;
+}
+
+function getBinaryPayloads() {
+    if (binaryPayloadCache.version === binaryModelVersion) {
+        return binaryPayloadCache;
+    }
+
+    const state = AppState.binary;
+    binaryPayloadCache = {
+        version: binaryModelVersion,
+        pointsJSON: JSON.stringify(state.points.map(p => ({
+            label: p.label,
+            comp: p.comp,
+            temp: p.temp,
+        }))),
+        linesJSON: JSON.stringify(state.lines),
+    };
+    return binaryPayloadCache;
+}
 
 function toggleBinaryCollapse(sectionEl, key) {
     sectionEl.classList.toggle('collapsed');
@@ -26,6 +53,193 @@ function renderBinary() {
     renderBinarySidebar();
     renderBinaryChart(false);
     renderBinaryResult();
+}
+
+function getBinaryCalcPositionFromEvent(evt) {
+    const chart = document.getElementById('binaryChart');
+    if (!chart || !chart._fullLayout || !chart._fullLayout._size) return null;
+
+    const fullLayout = chart._fullLayout;
+    const size = fullLayout._size;
+    const rect = chart.getBoundingClientRect();
+    const plotX = evt.clientX - rect.left - size.l;
+    const plotY = evt.clientY - rect.top - size.t;
+
+    if (plotX < 0 || plotY < 0 || plotX > size.w || plotY > size.h) {
+        return null;
+    }
+
+    const xRange = fullLayout.xaxis && fullLayout.xaxis.range;
+    const yRange = fullLayout.yaxis && fullLayout.yaxis.range;
+    if (!xRange || !yRange) return null;
+
+    const comp = xRange[0] + (plotX / size.w) * (xRange[1] - xRange[0]);
+    const temp = yRange[1] - (plotY / size.h) * (yRange[1] - yRange[0]);
+    return [comp, temp];
+}
+
+function syncBinaryCalcInputs() {
+    const state = AppState.binary;
+    if (!state.calcPos) return;
+
+    const compInput = document.getElementById('calcComp');
+    const tempInput = document.getElementById('calcTemp');
+    if (compInput) compInput.value = state.calcPos[0].toFixed(2);
+    if (tempInput) tempInput.value = state.calcPos[1].toFixed(1);
+}
+
+function applyBinaryCalcAt(comp, temp) {
+    const state = AppState.binary;
+    const safeComp = Math.max(0, Math.min(100, comp));
+    state.calcPos = [safeComp, temp];
+
+    const payloads = getBinaryPayloads();
+    state.calcRes = XubenBridge.performLeverRule(payloads.pointsJSON, payloads.linesJSON, safeComp, temp);
+    renderBinaryChart();
+    renderBinaryResult();
+    syncBinaryCalcInputs();
+}
+
+function onBinaryCalcOverlayClick(evt) {
+    if (!AppState.binary.calcMode) return;
+    const pos = getBinaryCalcPositionFromEvent(evt);
+    if (!pos) return;
+    applyBinaryCalcAt(pos[0], pos[1]);
+}
+
+function ensureBinaryCalcOverlay() {
+    const overlay = document.getElementById('binaryCalcOverlay');
+    if (!overlay) return;
+
+    if (!overlay.dataset.bound) {
+        overlay.addEventListener('click', onBinaryCalcOverlayClick);
+        overlay.dataset.bound = '1';
+    }
+
+    overlay.classList.toggle('active', AppState.binary.calcMode);
+}
+
+function getBinaryBaseTraces(xRange, yRange, tplName) {
+    const state = AppState.binary;
+    const cacheKey = JSON.stringify({
+        version: binaryModelVersion,
+        xRange,
+        yRange,
+        tplName,
+        showRegionFill: state.showRegionFill,
+    });
+    if (binaryBaseTraceCache.key === cacheKey && binaryBaseTraceCache.traces) {
+        return binaryBaseTraceCache.traces.slice();
+    }
+
+    const traces = [];
+
+    if (state.showRegionFill && tplName !== '手动模式') {
+        const tmpl = AppState.templates[tplName];
+        if (tmpl && tmpl.topology && tmpl.topology.regions) {
+            const ptMap = {};
+            state.points.forEach(p => {
+                if (p.comp != null && p.temp != null) ptMap[p.label] = [p.comp, p.temp];
+            });
+            ptMap.T_LEFT = [0, yRange[1] * 2];
+            ptMap.T_RIGHT = [100, yRange[1] * 2];
+            ptMap.B_LEFT = [0, yRange[0] - 500];
+            ptMap.B_RIGHT = [100, yRange[0] - 500];
+
+            tmpl.topology.regions.forEach((rDef, i) => {
+                const verts = rDef.points.map(lbl => ptMap[lbl]).filter(v => v);
+                if (verts.length < 3) return;
+                const xs = verts.map(v => v[0]);
+                const ys = verts.map(v => v[1]);
+                xs.push(xs[0]);
+                ys.push(ys[0]);
+                traces.push({
+                    x: xs,
+                    y: ys,
+                    fill: 'toself',
+                    fillcolor: AppState.regionColors[i % AppState.regionColors.length],
+                    line: { width: 0 },
+                    mode: 'none',
+                    name: rDef.label,
+                    showlegend: true,
+                    hoverinfo: 'skip',
+                    type: 'scatter',
+                });
+            });
+        }
+    }
+
+    const shownTypes = new Set();
+    state.lines.forEach(ln => {
+        const p1 = state.points.find(p => p.label === ln.start);
+        const p2 = state.points.find(p => p.label === ln.end);
+        if (!p1 || !p2 || p1.comp == null || p2.comp == null) return;
+
+        const curve = XubenBridge.computeBezierCurve(p1.comp, p1.temp, p2.comp, p2.temp, ln.curve, 40);
+        const style = AppState.lineStyles[ln.type] || AppState.lineStyles.other;
+        const dashMap = { '-': 'solid', '--': 'dash', '-.': 'dashdot', ':': 'dot' };
+        const isFirst = !shownTypes.has(ln.type);
+        shownTypes.add(ln.type);
+
+        traces.push({
+            x: curve.xs,
+            y: curve.ys,
+            mode: 'lines',
+            line: { color: style.color, width: style.lw, dash: dashMap[style.ls] || 'solid' },
+            name: style.label,
+            legendgroup: style.label,
+            showlegend: isFirst,
+            hoverinfo: 'skip',
+            type: 'scatter',
+        });
+    });
+
+    const validPts = state.points.filter(p => p.comp != null && p.temp != null);
+    if (validPts.length > 0) {
+        traces.push({
+            x: validPts.map(p => p.comp),
+            y: validPts.map(p => p.temp),
+            mode: 'markers+text',
+            marker: { color: '#E53935', size: 10, line: { width: 1, color: 'white' } },
+            text: validPts.map(p => p.label),
+            textposition: 'top right',
+            name: '特征点',
+            type: 'scatter',
+        });
+    }
+
+    binaryBaseTraceCache = { key: cacheKey, traces };
+    return traces.slice();
+}
+
+function getBinaryCalcTraces() {
+    const state = AppState.binary;
+    const traces = [];
+    if (!state.calcRes || !state.calcPos) return traces;
+
+    const res = state.calcRes;
+    const [cp, tp] = state.calcPos;
+    if (res.type === 'two_phase') {
+        traces.push({
+            x: [res.left, res.right],
+            y: [tp, tp],
+            mode: 'lines+markers',
+            line: { color: '#2E7D32', width: 3 },
+            marker: { symbol: 'diamond', size: 11, color: '#2E7D32' },
+            name: '杠杆臂',
+            type: 'scatter',
+        });
+    }
+
+    traces.push({
+        x: [cp],
+        y: [tp],
+        mode: 'markers',
+        marker: { color: '#FFEB3B', size: 13, line: { width: 2, color: 'black' } },
+        name: '计算选点',
+        type: 'scatter',
+    });
+    return traces;
 }
 
 function getBinaryLegendItems() {
@@ -310,6 +524,9 @@ function onTemplateChange() {
     if (name === '手动模式') {
         state.points = [];
         state.lines = [];
+        state.calcPos = null;
+        state.calcRes = null;
+        bumpBinaryModelVersion();
         renderBinary();
         return;
     }
@@ -332,6 +549,9 @@ function onTemplateChange() {
         state.axisRange.xmax = maxComp < 80 ? maxComp * 1.05 : 100;
         state.axisRange.xmin = 0;
     }
+    state.calcPos = null;
+    state.calcRes = null;
+    bumpBinaryModelVersion();
     renderBinarySidebar();
     renderBinaryChart(false);
     renderBinaryResult();
@@ -339,12 +559,16 @@ function onTemplateChange() {
 
 function onPointEdit(idx, field, value) {
     AppState.binary.points[idx][field] = value;
+    bumpBinaryModelVersion();
     renderBinaryChart();
+    renderBinaryResult();
 }
 
 function onLineEdit(idx, field, value) {
     AppState.binary.lines[idx][field] = value;
+    bumpBinaryModelVersion();
     renderBinaryChart();
+    renderBinaryResult();
 }
 
 function addPoint() {
@@ -358,6 +582,7 @@ function addPoint() {
         return;
     }
     state.points.push({ label: finalLabel, comp, temp });
+    bumpBinaryModelVersion();
     renderBinary();
 }
 
@@ -366,6 +591,7 @@ function removePoint(idx) {
     const label = state.points[idx].label;
     state.points.splice(idx, 1);
     state.lines = state.lines.filter(l => l.start !== label && l.end !== label);
+    bumpBinaryModelVersion();
     renderBinary();
 }
 
@@ -388,11 +614,13 @@ function addLine() {
         return;
     }
     state.lines.push({ start, end, type, curve });
+    bumpBinaryModelVersion();
     renderBinary();
 }
 
 function removeLine(idx) {
     AppState.binary.lines.splice(idx, 1);
+    bumpBinaryModelVersion();
     renderBinary();
 }
 
@@ -404,6 +632,8 @@ function onToggleCalcMode(val) {
 
 function onToggleRegionFill(val) {
     AppState.binary.showRegionFill = val;
+    binaryBaseTraceCache.key = null;
+    binaryBaseTraceCache.traces = null;
     renderBinaryChart();
 }
 
@@ -417,18 +647,9 @@ function onAxisChange() {
 }
 
 function onCalcLever() {
-    const state = AppState.binary;
     const comp = parseFloat(document.getElementById('calcComp').value) || 0;
     const temp = parseFloat(document.getElementById('calcTemp').value) || 0;
-    state.calcPos = [comp, temp];
-
-    const ptsJSON = JSON.stringify(state.points.map(p => ({
-        label: p.label, comp: p.comp, temp: p.temp
-    })));
-    const lnsJSON = JSON.stringify(state.lines);
-    state.calcRes = XubenBridge.performLeverRule(ptsJSON, lnsJSON, comp, temp);
-    renderBinaryChart();
-    renderBinaryResult();
+    applyBinaryCalcAt(comp, temp);
 }
 
 function readBinaryChartRanges() {
@@ -453,136 +674,12 @@ function isBinaryNarrowScreen() {
 
 function renderBinaryChart(preserveView = true) {
     const state = AppState.binary;
-    const traces = [];
     const currentRanges = preserveView ? readBinaryChartRanges() : null;
     const xRange = currentRanges ? currentRanges.xRange : [state.axisRange.xmin, state.axisRange.xmax];
     const yRange = currentRanges ? currentRanges.yRange : [state.axisRange.ymin, state.axisRange.ymax];
     const tplName = state.activeTemplate;
     const isNarrow = isBinaryNarrowScreen();
-
-    // Region fills
-    if (state.showRegionFill && tplName !== '手动模式') {
-        const tmpl = AppState.templates[tplName];
-        if (tmpl && tmpl.topology && tmpl.topology.regions) {
-            const ptMap = {};
-            state.points.forEach(p => {
-                if (p.comp != null && p.temp != null) ptMap[p.label] = [p.comp, p.temp];
-            });
-            ptMap['T_LEFT'] = [0, yRange[1] * 2];
-            ptMap['T_RIGHT'] = [100, yRange[1] * 2];
-            ptMap['B_LEFT'] = [0, yRange[0] - 500];
-            ptMap['B_RIGHT'] = [100, yRange[0] - 500];
-
-            tmpl.topology.regions.forEach((rDef, i) => {
-                const verts = rDef.points.map(lbl => ptMap[lbl]).filter(v => v);
-                if (verts.length >= 3) {
-                    const xs = verts.map(v => v[0]);
-                    const ys = verts.map(v => v[1]);
-                    xs.push(xs[0]);
-                    ys.push(ys[0]);
-                    const color = AppState.regionColors[i % AppState.regionColors.length];
-                    traces.push({
-                        x: xs, y: ys,
-                        fill: 'toself',
-                        fillcolor: color,
-                        line: { width: 0 },
-                        mode: 'none',
-                        name: rDef.label,
-                        showlegend: true,
-                        hoverinfo: 'skip',
-                        type: 'scatter'
-                    });
-                }
-            });
-        }
-    }
-
-    // Click grid for calc mode
-    if (state.calcMode) {
-        const gridN = 60;
-        const gx = [];
-        const gy = [];
-        for (let i = 0; i < gridN; i++) {
-            for (let j = 0; j < gridN; j++) {
-                gx.push(xRange[0] + (xRange[1] - xRange[0]) * i / (gridN - 1));
-                gy.push(yRange[0] + (yRange[1] - yRange[0]) * j / (gridN - 1));
-            }
-        }
-        traces.push({
-            x: gx, y: gy,
-            mode: 'markers',
-            marker: { size: 5, color: 'rgba(0,0,0,0)', opacity: 0 },
-            customdata: gx.map((v, i) => [v, gy[i]]),
-            hovertemplate: '<b>点击计算</b><br>B%: %{customdata[0]:.2f}<br>T: %{customdata[1]:.1f}°C<extra></extra>',
-            showlegend: false,
-            name: 'click_grid',
-            type: 'scatter'
-        });
-    }
-
-    // Lines
-    const shownTypes = new Set();
-    state.lines.forEach(ln => {
-        const p1 = state.points.find(p => p.label === ln.start);
-        const p2 = state.points.find(p => p.label === ln.end);
-        if (!p1 || !p2 || p1.comp == null || p2.comp == null) return;
-
-        const curve = XubenBridge.computeBezierCurve(p1.comp, p1.temp, p2.comp, p2.temp, ln.curve, 40);
-        const style = AppState.lineStyles[ln.type] || AppState.lineStyles['other'];
-        const dashMap = { '-': 'solid', '--': 'dash', '-.': 'dashdot', ':': 'dot' };
-        const isFirst = !shownTypes.has(ln.type);
-        shownTypes.add(ln.type);
-
-        traces.push({
-            x: curve.xs, y: curve.ys,
-            mode: 'lines',
-            line: { color: style.color, width: style.lw, dash: dashMap[style.ls] || 'solid' },
-            name: style.label,
-            legendgroup: style.label,
-            showlegend: isFirst,
-            hoverinfo: 'skip',
-            type: 'scatter'
-        });
-    });
-
-    // Points
-    const validPts = state.points.filter(p => p.comp != null && p.temp != null);
-    if (validPts.length > 0) {
-        traces.push({
-            x: validPts.map(p => p.comp),
-            y: validPts.map(p => p.temp),
-            mode: 'markers+text',
-            marker: { color: '#E53935', size: 10, line: { width: 1, color: 'white' } },
-            text: validPts.map(p => p.label),
-            textposition: 'top right',
-            name: '特征点',
-            type: 'scatter'
-        });
-    }
-
-    // Calc visuals
-    if (state.calcRes && state.calcPos) {
-        const res = state.calcRes;
-        const [cp, tp] = state.calcPos;
-        if (res.type === 'two_phase') {
-            traces.push({
-                x: [res.left, res.right],
-                y: [tp, tp],
-                mode: 'lines+markers',
-                line: { color: '#2E7D32', width: 3 },
-                marker: { symbol: 'diamond', size: 11, color: '#2E7D32' },
-                name: '杠杆臂',
-                type: 'scatter'
-            });
-            traces.push({
-                x: [cp], y: [tp],
-                mode: 'markers',
-                marker: { color: '#FFEB3B', size: 13, line: { width: 2, color: 'black' } },
-                name: '计算选点',
-                type: 'scatter'
-            });
-        }
-    }
+    const traces = getBinaryBaseTraces(xRange, yRange, tplName).concat(getBinaryCalcTraces());
 
     const layout = {
         xaxis: {
@@ -629,25 +726,7 @@ function renderBinaryChart(preserveView = true) {
     Plotly.react('binaryChart', traces, layout, { responsive: true })
         .then(() => {
             renderBinaryLegend();
-            if (state.calcMode) {
-                document.getElementById('binaryChart').on('plotly_click', (data) => {
-                    const pt = data.points[0];
-                    if (pt) {
-                        let cx = pt.x;
-                        let cy = pt.y;
-                        if (cx >= 0 && cx <= 100) {
-                            state.calcPos = [cx, cy];
-                            const ptsJSON = JSON.stringify(state.points.map(p => ({
-                                label: p.label, comp: p.comp, temp: p.temp
-                            })));
-                            const lnsJSON = JSON.stringify(state.lines);
-                            state.calcRes = XubenBridge.performLeverRule(ptsJSON, lnsJSON, cx, cy);
-                            renderBinaryChart();
-                            renderBinaryResult();
-                        }
-                    }
-                });
-            }
+            ensureBinaryCalcOverlay();
         });
 }
 
@@ -660,10 +739,8 @@ function renderBinaryResult() {
     }
     const [cp, tp] = state.calcPos;
     const tplName = state.activeTemplate;
-    const ptsJSON = JSON.stringify(state.points.map(p => ({
-        label: p.label, comp: p.comp, temp: p.temp
-    })));
-    const regionName = XubenBridge.getRegionAt(ptsJSON, tplName, cp, tp);
+    const payloads = getBinaryPayloads();
+    const regionName = XubenBridge.getRegionAt(payloads.pointsJSON, tplName, cp, tp);
 
     let html = '<div class="binary-result-card">';
     html += `<h3 class="binary-result-title">选定位置: B% = <strong>${cp.toFixed(2)}%</strong>, T = <strong>${tp.toFixed(2)}°C</strong></h3>`;

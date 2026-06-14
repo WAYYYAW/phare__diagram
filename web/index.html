@@ -24,7 +24,10 @@
         <div class="sidebar-layout binary-layout">
             <div class="main-content">
                 <section class="binary-visual-panel">
-                    <div class="chart-container" id="binaryChart"></div>
+                    <div class="binary-chart-frame">
+                        <div class="chart-container" id="binaryChart"></div>
+                        <button type="button" id="binaryCalcOverlay" class="binary-calc-overlay" aria-label="点击相图进行杠杆计算"></button>
+                    </div>
                     <div id="binaryLegend" class="binary-legend" aria-label="二元相图图例"></div>
                 </section>
                 <div id="binaryResult"></div>
