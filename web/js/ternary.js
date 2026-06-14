@@ -6,9 +6,13 @@ const SURFACE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0',
 let ternShowCoords = false;
 let ternActiveTab = 'tPtTab';
 let ternShowAxes = false;
+let ternShowIsoFill = true;
 let ternCollapsed = { pt: false, ln: false, sf: false };
 const TERN_COONS_LOW_N = 18;
 const TERN_COONS_HIGH_N = 60;
+const TERN_ISO_EPS = 1e-6;
+const TERN_JOIN_EPS = 1e-4;
+const TERN_FACE_AREA_EPS = 5e-6;
 let ternModelVersion = 0;
 let ternSliderRaf = 0;
 let ternPendingIsoTemp = null;
@@ -186,6 +190,267 @@ function ternUpdateIsoPlane3d(val) {
     } catch (e) {}
 }
 
+function ternPointEq2d(a, b, eps = TERN_JOIN_EPS) {
+    return Math.abs(a[0] - b[0]) <= eps && Math.abs(a[1] - b[1]) <= eps;
+}
+
+function ternDedupSegmentPoints(points, eps = TERN_JOIN_EPS) {
+    const out = [];
+    points.forEach(pt => {
+        if (!out.some(existing => ternPointEq2d(existing, pt, eps))) {
+            out.push(pt);
+        }
+    });
+    return out;
+}
+
+function ternAppendSegmentPoint(points, pt) {
+    if (points.length === 0 || !ternPointEq2d(points[points.length - 1], pt)) {
+        points.push(pt);
+    }
+}
+
+function ternBuildContourPolylines(segments) {
+    const remaining = segments
+        .filter(seg => seg && seg.length === 2 && !ternPointEq2d(seg[0], seg[1]))
+        .map(seg => [seg[0], seg[1]]);
+    const polylines = [];
+
+    while (remaining.length > 0) {
+        const seed = remaining.pop();
+        const line = [seed[0], seed[1]];
+        let extended = true;
+
+        while (extended) {
+            extended = false;
+            for (let i = remaining.length - 1; i >= 0; i--) {
+                const seg = remaining[i];
+                const start = line[0];
+                const end = line[line.length - 1];
+                if (ternPointEq2d(seg[0], end)) {
+                    ternAppendSegmentPoint(line, seg[1]);
+                } else if (ternPointEq2d(seg[1], end)) {
+                    ternAppendSegmentPoint(line, seg[0]);
+                } else if (ternPointEq2d(seg[1], start)) {
+                    line.unshift(seg[0]);
+                } else if (ternPointEq2d(seg[0], start)) {
+                    line.unshift(seg[1]);
+                } else {
+                    continue;
+                }
+                remaining.splice(i, 1);
+                extended = true;
+            }
+        }
+
+        polylines.push(line);
+    }
+
+    return polylines;
+}
+
+function ternPolygonArea(points) {
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        area += a[0] * b[1] - b[0] * a[1];
+    }
+    return area / 2;
+}
+
+function ternCross2d(a, b, c) {
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+function ternCanonicalPointKey(pt, eps = TERN_JOIN_EPS) {
+    return `${Math.round(pt[0] / eps)}:${Math.round(pt[1] / eps)}`;
+}
+
+function ternPointOnSegment2d(pt, a, b, eps = TERN_JOIN_EPS) {
+    const cross = (pt[0] - a[0]) * (b[1] - a[1]) - (pt[1] - a[1]) * (b[0] - a[0]);
+    if (Math.abs(cross) > eps) return false;
+    const dot = (pt[0] - a[0]) * (b[0] - a[0]) + (pt[1] - a[1]) * (b[1] - a[1]);
+    if (dot < -eps) return false;
+    const lenSq = (b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]);
+    if (dot - lenSq > eps) return false;
+    return true;
+}
+
+function ternSegmentParam(pt, a, b) {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= TERN_JOIN_EPS) return 0;
+    return ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / lenSq;
+}
+
+function ternPointInTriangle2d(pt, tri, eps = TERN_JOIN_EPS) {
+    const [a, b, c] = tri;
+    const v0x = c[0] - a[0], v0y = c[1] - a[1];
+    const v1x = b[0] - a[0], v1y = b[1] - a[1];
+    const v2x = pt[0] - a[0], v2y = pt[1] - a[1];
+    const dot00 = v0x * v0x + v0y * v0y;
+    const dot01 = v0x * v1x + v0y * v1y;
+    const dot02 = v0x * v2x + v0y * v2y;
+    const dot11 = v1x * v1x + v1y * v1y;
+    const dot12 = v1x * v2x + v1y * v2y;
+    const denom = dot00 * dot11 - dot01 * dot01;
+    if (Math.abs(denom) <= eps) return false;
+    const inv = 1 / denom;
+    const u = (dot11 * dot02 - dot01 * dot12) * inv;
+    const v = (dot00 * dot12 - dot01 * dot02) * inv;
+    return u >= -eps && v >= -eps && u + v <= 1 + eps;
+}
+
+function ternPolygonCentroid(points) {
+    let area2 = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        const cross = a[0] * b[1] - b[0] * a[1];
+        area2 += cross;
+        cx += (a[0] + b[0]) * cross;
+        cy += (a[1] + b[1]) * cross;
+    }
+    if (Math.abs(area2) <= TERN_JOIN_EPS) {
+        const sx = points.reduce((sum, pt) => sum + pt[0], 0);
+        const sy = points.reduce((sum, pt) => sum + pt[1], 0);
+        return [sx / points.length, sy / points.length];
+    }
+    return [cx / (3 * area2), cy / (3 * area2)];
+}
+
+function ternSegmentIntersection2d(a, b, c, d, eps = TERN_JOIN_EPS) {
+    const r = [b[0] - a[0], b[1] - a[1]];
+    const s = [d[0] - c[0], d[1] - c[1]];
+    const denom = r[0] * s[1] - r[1] * s[0];
+    const cma = [c[0] - a[0], c[1] - a[1]];
+    const numerT = cma[0] * s[1] - cma[1] * s[0];
+    const numerU = cma[0] * r[1] - cma[1] * r[0];
+
+    if (Math.abs(denom) <= eps) {
+        return null;
+    }
+    const t = numerT / denom;
+    const u = numerU / denom;
+    if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) {
+        return null;
+    }
+    return [
+        a[0] + t * r[0],
+        a[1] + t * r[1],
+    ];
+}
+
+function ternSplitSegmentsAtIntersections(segments) {
+    const split = [];
+
+    for (let i = 0; i < segments.length; i++) {
+        const [a, b] = segments[i];
+        const pts = [[a[0], a[1]], [b[0], b[1]]];
+        for (let j = 0; j < segments.length; j++) {
+            if (i === j) continue;
+            const [c, d] = segments[j];
+            const hit = ternSegmentIntersection2d(a, b, c, d);
+            if (hit) {
+                pts.push(hit);
+            }
+        }
+        const dedup = ternDedupSegmentPoints(pts);
+        dedup.sort((p1, p2) => ternSegmentParam(p1, a, b) - ternSegmentParam(p2, a, b));
+        for (let k = 0; k < dedup.length - 1; k++) {
+            if (!ternPointEq2d(dedup[k], dedup[k + 1])) {
+                split.push([dedup[k], dedup[k + 1]]);
+            }
+        }
+    }
+
+    return split;
+}
+
+function ternSimplifyPolygon(points) {
+    let out = points.slice();
+    let changed = true;
+    while (changed && out.length >= 3) {
+        changed = false;
+        const next = [];
+        for (let i = 0; i < out.length; i++) {
+            const prev = out[(i - 1 + out.length) % out.length];
+            const curr = out[i];
+            const following = out[(i + 1) % out.length];
+            const edgeLen = Math.hypot(curr[0] - prev[0], curr[1] - prev[1]);
+            const collinear = Math.abs(ternCross2d(prev, curr, following)) <= TERN_JOIN_EPS;
+            if (edgeLen <= TERN_JOIN_EPS || collinear) {
+                changed = true;
+                continue;
+            }
+            next.push(curr);
+        }
+        out = next;
+    }
+    return out;
+}
+
+function ternExtractBoundaryLoops(polys) {
+    const edgeMap = new Map();
+
+    function addEdge(a, b) {
+        if (ternPointEq2d(a, b)) return;
+        const ka = ternCanonicalPointKey(a);
+        const kb = ternCanonicalPointKey(b);
+        const undirected = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+        const existing = edgeMap.get(undirected);
+        if (existing) {
+            existing.count += 1;
+            return;
+        }
+        edgeMap.set(undirected, {
+            count: 1,
+            start: [a[0], a[1]],
+            end: [b[0], b[1]],
+        });
+    }
+
+    polys.forEach(poly => {
+        if (!poly || poly.length < 3) return;
+        for (let i = 0; i < poly.length; i++) {
+            addEdge(poly[i], poly[(i + 1) % poly.length]);
+        }
+    });
+
+    const segments = [];
+    edgeMap.forEach(edge => {
+        if (edge.count === 1) {
+            segments.push([edge.start, edge.end]);
+        }
+    });
+
+    return ternBuildContourPolylines(segments)
+        .map(line => {
+            const pts = line.slice();
+            if (pts.length >= 3 && ternPointEq2d(pts[0], pts[pts.length - 1])) {
+                pts.pop();
+            }
+            return pts;
+        })
+        .filter(line => line.length >= 3 && Math.abs(ternPolygonArea(line)) > TERN_JOIN_EPS);
+}
+
+function ternPlotlyPolygonPoints(points) {
+    const xs = [];
+    const ys = [];
+    points.forEach(pt => {
+        xs.push(pt[0]);
+        ys.push(pt[1]);
+    });
+    xs.push(points[0][0], null);
+    ys.push(points[0][1], null);
+    return { x: xs, y: ys };
+}
+
 // Collapsible section helpers
 function toggleCollapse(sectionEl, key) {
     sectionEl.classList.toggle('collapsed');
@@ -245,13 +510,15 @@ function renderTernaryToolbar() {
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
                 <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 轴
             </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                <input type="checkbox" ${ternShowIsoFill ? 'checked' : ''} onchange="ternShowIsoFill=this.checked;renderTernary2d();"> 等温上方填色
+            </label>
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:#d97706;">
                 <input type="checkbox" id="ternPrecisionToggle" ${ternHighPrecision ? 'checked' : ''} onchange="togglePrecision(this.checked)"> 高精度
             </label>
         </div>
         ${ternBuildIsoSlider()}
         <div class="caption">数据: ${state.points.length}点 / ${state.lines.length}线 / ${state.surfs.length}面 | 等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
-        <div id="ternHoverInfo" style="margin-top:6px;font-size:12px;min-height:20px;color:#666;"></div>
     `;
     container.innerHTML = html;
 }
@@ -373,6 +640,7 @@ function switchTernaryTab(tabId) {
 function onTernPtEdit(idx, field, value) {
     AppState.ternary.points[idx][field] = value;
     ternInvalidateMeshCache();
+    renderTernaryToolbar();
     renderTernaryCharts();
 }
 
@@ -769,36 +1037,6 @@ function renderTernary3d() {
     };
 
     Plotly.react('ternaryChart3d', traces, layout, { responsive: true });
-
-    if (ternShowCoords) {
-        document.getElementById('ternaryChart3d').on('plotly_hover', (eventData) => {
-            const pts = eventData.points;
-            if (!pts || pts.length === 0) return;
-            const p = pts[0];
-            const infoEl = document.getElementById('ternHoverInfo');
-            if (!infoEl) return;
-
-            if (p.data && p.data.name === '坐标面') {
-                const r = XubenBridge.ternary.from3d(p.x, p.y);
-                infoEl.innerHTML = `<span style="color:#333;"><b>📍 坐标:</b> A=${r.a}% B=${r.b}% C=${r.c}% | x=${p.x.toFixed(4)} y=${p.y.toFixed(4)} z=${p.z.toFixed(1)}°C</span>`;
-            } else if (p.data && p.data.name === '数据点') {
-                infoEl.innerHTML = `<span style="color:#333;">${p.hovertext || p.text}</span>`;
-            } else if (p.data && p.data.type === 'mesh3d' && p.data.name && p.data.name.startsWith('曲面')) {
-                const r = XubenBridge.ternary.from3d(p.x, p.y);
-                infoEl.innerHTML = `<span style="color:#333;"><b>${p.data.name}</b> A=${r.a}% B=${r.b}% C=${r.c}% | T=${p.z.toFixed(1)}°C</span>`;
-            } else {
-                const r = XubenBridge.ternary.from3d(p.x, p.y);
-                infoEl.innerHTML = `<span style="color:#888;">A=${r.a}% B=${r.b}% C=${r.c}% | (${p.x.toFixed(4)}, ${p.y.toFixed(4)}, ${p.z.toFixed(1)})</span>`;
-            }
-        });
-        document.getElementById('ternaryChart3d').on('plotly_unhover', () => {
-            const infoEl = document.getElementById('ternHoverInfo');
-            if (infoEl) infoEl.innerHTML = '';
-        });
-    } else {
-        const infoEl = document.getElementById('ternHoverInfo');
-        if (infoEl) infoEl.innerHTML = '';
-    }
 }
 
 // ---- 2D Projection ----
@@ -838,97 +1076,130 @@ function renderTernary2d() {
             const baseColor = SURFACE_COLORS[si % SURFACE_COLORS.length];
 
             const abovePolys = [];
-            const belowPolys = [];
             const sfContour = [];
-
-            const lerp = (a, b, za, zb) => {
-                const t = (isoTemp - za) / (zb - za);
-                return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
-            };
-            const poly2d = (x1, y1, x2, y2, x3, y3) => [x1, y1, x2, y2, x3, y3, x1, y1, null, null];
+            const poly2d = (x1, y1, x2, y2, x3, y3) => [[x1, y1], [x2, y2], [x3, y3]];
 
             for (var ti = 0; ti < numTris; ti++) {
                 var i0 = is[ti], i1 = js[ti], i2 = ks[ti];
                 var x0 = xs[i0], y0 = ys[i0], z0 = zs[i0];
                 var x1 = xs[i1], y1 = ys[i1], z1 = zs[i1];
                 var x2 = xs[i2], y2 = ys[i2], z2 = zs[i2];
-                var flags = [+(z0 > isoTemp), +(z1 > isoTemp), +(z2 > isoTemp)];
+                var px = [x0, x1, x2], py = [y0, y1, y2], pz = [z0, z1, z2];
+                var signed = [z0 - isoTemp, z1 - isoTemp, z2 - isoTemp];
+                var onPlane = signed.map(v => Math.abs(v) <= TERN_ISO_EPS);
+                var flags = signed.map((v, idx) => (onPlane[idx] ? 0 : +(v > 0)));
                 var above = flags[0] + flags[1] + flags[2];
+                var allOnPlane = onPlane[0] && onPlane[1] && onPlane[2];
+                if (allOnPlane) {
+                    sfContour.push([[x0, y0], [x1, y1]]);
+                    sfContour.push([[x1, y1], [x2, y2]]);
+                    sfContour.push([[x2, y2], [x0, y0]]);
+                    continue;
+                }
+
+                var triPts = [[x0, y0], [x1, y1], [x2, y2]];
+                var triAbove = [];
+                var triBelow = [];
+                triPts.forEach((pt, idx) => {
+                    if (onPlane[idx]) {
+                        triAbove.push(pt);
+                        triBelow.push(pt);
+                    } else if (signed[idx] > 0) {
+                        triAbove.push(pt);
+                    } else {
+                        triBelow.push(pt);
+                    }
+                });
+
+                var ips = [];
+                for (var e = 0; e < 3; e++) {
+                    var ea = e, eb = (e + 1) % 3;
+                    var pa = triPts[ea], pb = triPts[eb];
+                    var za = signed[ea], zb = signed[eb];
+
+                    if (onPlane[ea] && onPlane[eb]) {
+                        ips.push(pa, pb);
+                        continue;
+                    }
+                    if (onPlane[ea]) {
+                        ips.push(pa);
+                        continue;
+                    }
+                    if (onPlane[eb]) {
+                        ips.push(pb);
+                        continue;
+                    }
+                    if (za * zb < 0) {
+                        var t = (isoTemp - pz[ea]) / (pz[eb] - pz[ea]);
+                        ips.push([
+                            px[ea] + t * (px[eb] - px[ea]),
+                            py[ea] + t * (py[eb] - py[ea]),
+                        ]);
+                    }
+                }
+                ips = ternDedupSegmentPoints(ips);
 
                 if (above === 3) {
                     abovePolys.push(poly2d(x0, y0, x1, y1, x2, y2));
-                } else if (above === 0) {
-                    belowPolys.push(poly2d(x0, y0, x1, y1, x2, y2));
                 } else {
-                    var upPts = [], dnPts = [];
-                    if (flags[0]) upPts.push(0); else dnPts.push(0);
-                    if (flags[1]) upPts.push(1); else dnPts.push(1);
-                    if (flags[2]) upPts.push(2); else dnPts.push(2);
-                    var px = [x0, x1, x2], py = [y0, y1, y2], pz = [z0, z1, z2];
-                    var ips = [];
-                    var lerpPt = function(ax, ay, az, bx, by, bz) {
-                        var t = (isoTemp - az) / (bz - az);
-                        return [ax + t * (bx - ax), ay + t * (by - ay)];
-                    };
-                    var getPt = function(idx) { return [px[idx], py[idx], pz[idx]]; };
-                    for (var e = 0; e < 3; e++) {
-                        var ea = e, eb = (e + 1) % 3;
-                        if ((pz[ea] - isoTemp) * (pz[eb] - isoTemp) < 0)
-                            ips.push(lerpPt(px[ea], py[ea], pz[ea], px[eb], py[eb], pz[eb]));
-                    }
                     if (ips.length === 2) {
                         sfContour.push([ips[0], ips[1]]);
-                        if (above === 1) {
-                            var A = upPts[0];
-                            abovePolys.push(poly2d(px[A], py[A], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                            belowPolys.push(poly2d(px[dnPts[0]], py[dnPts[0]], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                            belowPolys.push(poly2d(px[dnPts[0]], py[dnPts[0]], ips[1][0], ips[1][1], px[dnPts[1]], py[dnPts[1]]));
-                        } else {
-                            var B = dnPts[0];
-                            abovePolys.push(poly2d(px[upPts[0]], py[upPts[0]], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                            abovePolys.push(poly2d(px[upPts[0]], py[upPts[0]], ips[1][0], ips[1][1], px[upPts[1]], py[upPts[1]]));
-                            belowPolys.push(poly2d(px[B], py[B], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                    } else if (ips.length === 3) {
+                        sfContour.push([ips[0], ips[1]]);
+                        sfContour.push([ips[1], ips[2]]);
+                        sfContour.push([ips[2], ips[0]]);
+                    }
+
+                    triAbove = ternDedupSegmentPoints(triAbove.concat(ips));
+                    triBelow = ternDedupSegmentPoints(triBelow.concat(ips));
+                    if (triAbove.length >= 3) {
+                        abovePolys.push([triAbove[0], triAbove[1], triAbove[2]]);
+                        if (triAbove.length === 4) {
+                            abovePolys.push([triAbove[0], triAbove[2], triAbove[3]]);
                         }
-                    } else {
-                        if (above >= 2) {
-                            abovePolys.push(poly2d(x0, y0, x1, y1, x2, y2));
-                        } else {
-                            belowPolys.push(poly2d(x0, y0, x1, y1, x2, y2));
-                        }
+                    }
+                    if (triBelow.length < 3 && above >= 2) {
+                        abovePolys.push(poly2d(x0, y0, x1, y1, x2, y2));
                     }
                 }
             }
 
             // Above-plane fill
-            if (abovePolys.length > 0) {
+            if (ternShowIsoFill && abovePolys.length > 0) {
+                const footprintLoops = ternExtractBoundaryLoops(abovePolys);
                 const ax = [], ay = [];
-                abovePolys.forEach(p => { ax.push(...p.filter((_, i) => i % 2 === 0)); ay.push(...p.filter((_, i) => i % 2 === 1)); });
-                traces.push({
-                    x: ax, y: ay,
-                    mode: 'lines', line: { color: baseColor, width: 1.5 },
-                    type: 'scatter', fill: 'toself',
-                    fillcolor: baseColor + '55',
-                    name: `面#${si + 1} 上方`, showlegend: true, hoverinfo: 'skip',
+                let fillMode = 'none';
+                footprintLoops.forEach(loop => {
+                    const plotPts = ternPlotlyPolygonPoints(loop);
+                    ax.push(...plotPts.x);
+                    ay.push(...plotPts.y);
                 });
-            }
-
-            // Below-plane fill (faint)
-            if (belowPolys.length > 0) {
-                const bx = [], by = [];
-                belowPolys.forEach(p => { bx.push(...p.filter((_, i) => i % 2 === 0)); by.push(...p.filter((_, i) => i % 2 === 1)); });
-                traces.push({
-                    x: bx, y: by,
-                    mode: 'lines', line: { color: '#ccc', width: 0.5 },
-                    type: 'scatter', fill: 'toself',
-                    fillcolor: baseColor + '14',
-                    name: `面#${si + 1} 下方`, showlegend: true, hoverinfo: 'skip',
-                });
+                if (footprintLoops.length > 0) {
+                    fillMode = 'fallback';
+                }
+                if (ax.length > 0) {
+                    traces.push({
+                        x: ax, y: ay,
+                        mode: 'lines', line: { color: 'rgba(0,0,0,0)', width: 0.1 },
+                        type: 'scatter', fill: 'toself',
+                        fillcolor: baseColor + '55',
+                        name: `面#${si + 1} 上方`, showlegend: true, hoverinfo: 'skip',
+                    });
+                }
             }
 
             // Surface intersection contour
             if (sfContour.length > 0) {
                 const cx = [], cy = [];
-                sfContour.forEach(seg => { cx.push(seg[0][0], seg[1][0], null); cy.push(seg[0][1], seg[1][1], null); });
+                const polylines = ternBuildContourPolylines(ternSplitSegmentsAtIntersections(sfContour));
+                polylines.forEach(line => {
+                    line.forEach(pt => {
+                        cx.push(pt[0]);
+                        cy.push(pt[1]);
+                    });
+                    cx.push(null);
+                    cy.push(null);
+                });
                 traces.push({
                     x: cx, y: cy,
                     mode: 'lines', line: { color: '#D32F2F', width: 3 },

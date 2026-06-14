@@ -4,13 +4,14 @@
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|---|
-| **计算引擎** | Go 1.25 — 编译为 WASM，通过 `syscall/js` 桥接 |
-| **前端可视化** | Plotly.js 2.32.0 2D/3D 图表 + Canvas 2D 渲染 |
-| **前端框架** | 原生 JavaScript (无框架依赖) |
-| **数据存储** | SQLite (WAL 模式，通过 modernc.org/sqlite 纯 Go 驱动) |
-| **部署选项** | 开发模式：Go 静态文件服务器；生产模式：单文件 HTML（内嵌 WASM base64） |
+
+| 层             | 技术                                                                   |
+| -------------- | ---------------------------------------------------------------------- |
+| **计算引擎**   | Go 1.25 — 编译为 WASM，通过`syscall/js` 桥接                          |
+| **前端可视化** | Plotly.js 2.32.0 2D/3D 图表 + Canvas 2D 渲染                           |
+| **前端框架**   | 原生 JavaScript (无框架依赖)                                           |
+| **数据存储**   | SQLite (WAL 模式，通过 modernc.org/sqlite 纯 Go 驱动)                  |
+| **部署选项**   | 开发模式：Go 静态文件服务器；生产模式：单文件 HTML（内嵌 WASM base64） |
 
 ## 核心功能 — 3 个模块
 
@@ -19,7 +20,6 @@
 - **预置多套经典二元相图模板**：
   - 简单共晶相图
   - 包晶相图 (Pt-Ag 体系)
-
   - 溶混间隙相图 (Cu-Pb 体系)
   - 铁碳相图 (Fe-Fe₃C)
   - 匀晶(固溶体)相图
@@ -32,9 +32,10 @@
 
 - 3D 三角形坐标系：A-B-C 三组分 + 温度轴
 - **Coons 曲面**：使用 3 边 / 4 边 Coons 补丁构建曲面，缺失边界线自动创建
-- **等温面**：显示任意温度的等温截面，滑块拖动实时更新（mesh 缓存，无重复计算）
+- **等温面**：显示任意温度的等温截面，滑块拖动实时更新（`requestAnimationFrame` 合帧 + 拖动低精度 / 松手高精度）
 - **2D 投影**：3D 曲面按等温面切割投影至 2D 三角图
 - **零拷贝传输**：Coons 网格通过 TypedArray 视图直读 WASM 线性内存，无 JSON 序列化开销
+- **持久化网格句柄池**：WASM 内部持有曲面网格，JS 侧通过 handle 显式释放生命周期
 - 数据持久化：保存 / 加载 JSON 格式
 
 ### 3️⃣ 浓度三角形 (Triangle)
@@ -68,6 +69,7 @@ xuben/
     ├── bundle.html             # 单文件版本 (构建生成)
     ├── css/style.css           # 样式
     └── js/
+        ├── bridge.js           # WASM 桥接收口，统一封装 xuben* 导出
         ├── app.js              # 应用状态管理
         ├── binary.js           # 二元相图前端
         ├── ternary.js          # 三元相图前端
@@ -109,25 +111,31 @@ make bundle
 
 ### 文件体积
 
-| 组件 | 说明 |
-|---|---|
-| `main.wasm` | ~1MB (Go 编译的 WASM 二进制) |
+
+| 组件          | 说明                                        |
+| ------------- | ------------------------------------------- |
+| `main.wasm`   | ~1MB (Go 编译的 WASM 二进制)                |
 | `bundle.html` | ~8MB (内嵌 WASM base64 + Plotly + CSS + JS) |
 
 ## 架构
 
 ```
 ┌─────────────┐     Plotly.js      ┌──────────────┐
-│  index.html  │ ←─── 可视化 ────→  │  JS Frontend  │
-│  (或 bundle) │                    │  (app.js +    │
-└─────────────┘                    │   binary.js   │
-                                   │   ternary.js  │
-                                   │   triangle.js)│
+│  index.html │ ←─── 可视化 ────→  │  JS Frontend │
+│ (或 bundle) │                    │ (app/binary/ │
+└─────────────┘                    │ ternary/     │
+                                   │ triangle)    │
+                                   └──────┬───────┘
+                                          │ 调用收口
+                                   ┌──────▼───────┐
+                                   │ bridge.js    │
+                                   │ 统一封装     │
+                                   │ XubenBridge  │
                                    └──────┬───────┘
                                           │ syscall/js
                                    ┌──────▼───────┐
                                    │  Go WASM     │
-                                   │ ────────────  │
+                                   │ ──────────── │
                                    │ binary.go    │
                                    │ ternary.go   │
                                    │ triangle.go  │
@@ -137,8 +145,18 @@ make bundle
 ```
 
 - 前端负责 UI 渲染和用户交互
+- `bridge.js` 负责统一封装 WASM 导出，页面模块不直接访问 `xuben*` 全局函数
 - WASM 负责所有数值计算（杠杆定律、贝塞尔插值、Coons 曲面等）
 - 数据传递：轻量数据以 JSON 字符串传递；Coons 网格等大数据通过零拷贝 TypedArray 视图直读 WASM 线性内存
+- 三元曲面采用 WASM 持久化网格句柄池，支持多曲面缓存与显式释放
+
+## TODO
+
+[ ] 三元相图模板
+
+[ ] 二元相图前端元素，布局混乱
+
+[ ] 前端重构为state / ui / wasm-bridge / plot-renderer
 
 ## 应用场景
 
@@ -162,12 +180,13 @@ make bundle
 
 ### 采集数据
 
-| 类型 | 字段 | 说明 |
-|------|------|------|
-| **page_view** | 屏幕分辨率、视口尺寸、设备像素比、操作系统、语言、时区、CPU 核心数、来源 URL | 首次加载时采集，`localStorage` 防重复 (1h) |
-| **perf** | FCP、LCP、WASM 加载耗时 (decode/compile/init)、UA 高熵值 (架构/型号/品牌) | 延迟采集，等 WASM 加载完成或 30s 超时后上报 |
-| **heartbeat** | seq、elapsed | 每 60s 一次 (页面可见时)，用于计算会话时长和跳出率 |
-| **page_unload** | elapsed | 页面关闭时通过 `fetch keepalive` 上报 |
+
+| 类型            | 字段                                                                         | 说明                                               |
+| --------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
+| **page_view**   | 屏幕分辨率、视口尺寸、设备像素比、操作系统、语言、时区、CPU 核心数、来源 URL | 首次加载时采集，`localStorage` 防重复 (1h)         |
+| **perf**        | FCP、LCP、WASM 加载耗时 (decode/compile/init)、UA 高熵值 (架构/型号/品牌)    | 延迟采集，等 WASM 加载完成或 30s 超时后上报        |
+| **heartbeat**   | seq、elapsed                                                                 | 每 60s 一次 (页面可见时)，用于计算会话时长和跳出率 |
+| **page_unload** | elapsed                                                                      | 页面关闭时通过`fetch keepalive` 上报               |
 
 ### 启动服务
 
@@ -183,12 +202,13 @@ ANALYTICS_DB=analytics.db ANALYTICS_BIND=:7999 go run .
 
 ### API 接口
 
-| 路径 | 方法 | 说明 |
-|------|------|------|
-| `/analytics` | GET/POST | 接收分析数据 (image beacon GET / JSON POST) |
-| `/analytics/stats` | GET | 聚合统计 (PV/UV/会话/设备/性能分布等) |
-| `/analytics/view` | GET | 查看全部记录 |
-| `/analytics/day?date=YYYY-MM-DD` | GET | 按日期查询 |
-| `/analytics/search?field=x&value=y` | GET | 按字段筛选 |
-| `/analytics/dashboard` | GET | Dashboard 页面 |
-| `/health` | GET | 健康检查 |
+
+| 路径                                | 方法     | 说明                                        |
+| ----------------------------------- | -------- | ------------------------------------------- |
+| `/analytics`                        | GET/POST | 接收分析数据 (image beacon GET / JSON POST) |
+| `/analytics/stats`                  | GET      | 聚合统计 (PV/UV/会话/设备/性能分布等)       |
+| `/analytics/view`                   | GET      | 查看全部记录                                |
+| `/analytics/day?date=YYYY-MM-DD`    | GET      | 按日期查询                                  |
+| `/analytics/search?field=x&value=y` | GET      | 按字段筛选                                  |
+| `/analytics/dashboard`              | GET      | Dashboard 页面                              |
+| `/health`                           | GET      | 健康检查                                    |
