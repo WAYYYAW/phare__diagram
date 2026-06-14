@@ -549,8 +549,9 @@ function ternRenderDemoCard() {
     if (state.activeTemplate !== TERNARY_DEMO_TEMPLATE) return '';
     const demo = state.demo;
     const c = Math.max(0, 100 - (Number(demo.a) || 0) - (Number(demo.b) || 0));
+    const status = '<div class="caption ternary-sidebar-caption">简单数据面板。</div>';
     const savedRows = demo.routes.length
-        ? `<table class="data-table">
+        ? `<div class="ternary-route-table-wrap"><table class="data-table ternary-route-table">
             <thead><tr><th>标签</th><th>A%</th><th>B%</th><th>C%</th><th>T0</th><th>路线</th><th></th></tr></thead>
             <tbody>${demo.routes.map((route, idx) => `
                 <tr>
@@ -564,7 +565,7 @@ function ternRenderDemoCard() {
                         <button class="btn btn-danger ternary-action-btn" onclick="ternDeleteDemoRoute('${route.label}')">✕</button>
                     </td>
                 </tr>
-            `).join('')}</tbody></table>`
+            `).join('')}</tbody></table></div>`
         : '<div class="empty-state">暂无已保存路线</div>';
     return `
         <div class="card ternary-sidebar-card">
