@@ -208,7 +208,7 @@ function triOnClick(event) {
     const py = event.clientY - rect.top;
     const { A, B, C } = canvas._tri;
 
-    const hit = xubenTriPointInTriangle(px, py, A[0], A[1], B[0], B[1], C[0], C[1]);
+    const hit = XubenBridge.triangle.pointInTriangle(px, py, A[0], A[1], B[0], B[1], C[0], C[1]);
     if (!hit.ok) {
         document.getElementById('triResult').innerHTML = '<div class="tri-info error">❌ 请在三角形内部点击</div>';
         return;
@@ -241,15 +241,15 @@ function triModePoint(px, py, a, b, c, resultEl, A, B, C) {
 
     const arrows = [];
     const dx_ac = A[0] - C[0], dy_ac = A[1] - C[1];
-    const ac = xubenTriLineIntersection(px, py, px + dx_ac * 20, py + dy_ac * 20, A[0], A[1], B[0], B[1]);
+    const ac = XubenBridge.triangle.lineIntersection(px, py, px + dx_ac * 20, py + dy_ac * 20, A[0], A[1], B[0], B[1]);
     if (ac) arrows.push({ x1: px, y1: py, x2: ac.x, y2: ac.y, color: 'red' });
 
     const dx_ab = B[0] - A[0], dy_ab = B[1] - A[1];
-    const ab = xubenTriLineIntersection(px, py, px + dx_ab * 20, py + dy_ab * 20, B[0], B[1], C[0], C[1]);
+    const ab = XubenBridge.triangle.lineIntersection(px, py, px + dx_ab * 20, py + dy_ab * 20, B[0], B[1], C[0], C[1]);
     if (ab) arrows.push({ x1: px, y1: py, x2: ab.x, y2: ab.y, color: 'blue' });
 
     const dx_bc = C[0] - B[0], dy_bc = C[1] - B[1];
-    const bc = xubenTriLineIntersection(px, py, px + dx_bc * 20, py + dy_bc * 20, A[0], A[1], C[0], C[1]);
+    const bc = XubenBridge.triangle.lineIntersection(px, py, px + dx_bc * 20, py + dy_bc * 20, A[0], A[1], C[0], C[1]);
     if (bc) arrows.push({ x1: px, y1: py, x2: bc.x, y2: bc.y, color: 'green' });
 
     TriState.arrows = arrows;
@@ -307,7 +307,7 @@ function triModePhase2(px, py, resultEl) {
     if (TriState.locked && TriState.points.length === 2) {
         triClearState();
         const [p1, p2] = TriState.points;
-        const proj = xubenTriProjectPointOnLine(px, py, p1[0], p1[1], p2[0], p2[1]);
+        const proj = XubenBridge.triangle.projectPointOnLine(px, py, p1[0], p1[1], p2[0], p2[1]);
         const rx = proj.x, ry = proj.y;
 
         TriState.phase2R = {
@@ -315,8 +315,8 @@ function triModePhase2(px, py, resultEl) {
             proj: { px, py }
         };
 
-        const d1 = xubenTriDist(p1[0], p1[1], rx, ry);
-        const d2 = xubenTriDist(p2[0], p2[1], rx, ry);
+        const d1 = XubenBridge.triangle.dist(p1[0], p1[1], rx, ry);
+        const d2 = XubenBridge.triangle.dist(p2[0], p2[1], rx, ry);
         const total = d1 + d2;
         const wa = Math.round(d2 / total * 10000) / 100;
         const wb = Math.round(d1 / total * 10000) / 100;
@@ -358,7 +358,7 @@ function triModePhase3(px, py, resultEl) {
         triClearState();
         const [alpha, beta, gamma] = TriState.points;
 
-        const inside = xubenTriPointInTriangle3(px, py,
+        const inside = XubenBridge.triangle.pointInTriangle3(px, py,
             alpha[0], alpha[1], beta[0], beta[1], gamma[0], gamma[1]);
         if (!inside) {
             resultEl.innerHTML = '<div class="tri-info error">❌ 只能在三相三角形内部点击</div>';
@@ -367,13 +367,13 @@ function triModePhase3(px, py, resultEl) {
 
         TriState.phase3R = { px, py };
 
-        const d = xubenTriLineIntersection(
+        const d = XubenBridge.triangle.lineIntersection(
             alpha[0], alpha[1], px, py,
             beta[0], beta[1], gamma[0], gamma[1]);
-        const e = xubenTriLineIntersection(
+        const e = XubenBridge.triangle.lineIntersection(
             beta[0], beta[1], px, py,
             alpha[0], alpha[1], gamma[0], gamma[1]);
-        const f = xubenTriLineIntersection(
+        const f = XubenBridge.triangle.lineIntersection(
             gamma[0], gamma[1], px, py,
             alpha[0], alpha[1], beta[0], beta[1]);
 
@@ -383,12 +383,12 @@ function triModePhase3(px, py, resultEl) {
         if (f) aux.push({ x1: gamma[0], y1: gamma[1], x2: f.x, y2: f.y, color: 'green', label: 'f', lx: f.x + 15, ly: f.y - 12 });
         TriState.phase3Aux = aux;
 
-        const dx = d ? xubenTriDist(alpha[0], alpha[1], d.x, d.y) : 1;
-        const dr = d ? xubenTriDist(px, py, d.x, d.y) : 0;
-        const ex = e ? xubenTriDist(beta[0], beta[1], e.x, e.y) : 1;
-        const er = e ? xubenTriDist(px, py, e.x, e.y) : 0;
-        const fx = f ? xubenTriDist(gamma[0], gamma[1], f.x, f.y) : 1;
-        const fr = f ? xubenTriDist(px, py, f.x, f.y) : 0;
+        const dx = d ? XubenBridge.triangle.dist(alpha[0], alpha[1], d.x, d.y) : 1;
+        const dr = d ? XubenBridge.triangle.dist(px, py, d.x, d.y) : 0;
+        const ex = e ? XubenBridge.triangle.dist(beta[0], beta[1], e.x, e.y) : 1;
+        const er = e ? XubenBridge.triangle.dist(px, py, e.x, e.y) : 0;
+        const fx = f ? XubenBridge.triangle.dist(gamma[0], gamma[1], f.x, f.y) : 1;
+        const fr = f ? XubenBridge.triangle.dist(px, py, f.x, f.y) : 0;
 
         const wAlpha = Math.round(dr / dx * 10000) / 100;
         const wBeta = Math.round(er / ex * 10000) / 100;

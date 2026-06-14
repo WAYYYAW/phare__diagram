@@ -35,7 +35,7 @@ func main() {
 		panic(err)
 	}
 
-	jsFiles := []string{"wasm_exec.js", "app.js", "binary.js", "ternary.js", "triangle.js", "analytics.js"}
+	jsFiles := []string{"wasm_exec.js", "bridge.js", "app.js", "binary.js", "ternary.js", "triangle.js", "analytics.js"}
 	var jsParts [][]byte
 	for _, f := range jsFiles {
 		b, err := os.ReadFile(filepath.Join(webDir, "js", f))
@@ -77,6 +77,7 @@ func main() {
 	// 3. Remove all external script tags
 	for _, tag := range []string{
 		`<script src="js/app.js"></script>`,
+		`<script src="js/bridge.js"></script>`,
 		`<script src="js/binary.js"></script>`,
 		`<script src="js/ternary.js"></script>`,
 		`<script src="js/triangle.js"></script>`,

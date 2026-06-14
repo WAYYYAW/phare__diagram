@@ -92,10 +92,10 @@ function nextAutoLabel(existing) {
 document.addEventListener('DOMContentLoaded', () => {
     // Poll for WASM readiness
     const checkWasm = setInterval(() => {
-        if (typeof xubenGetTemplates !== 'undefined') {
+        if (window.XubenBridge && XubenBridge.isReady()) {
             clearInterval(checkWasm);
             try {
-                const data = xubenGetTemplates();
+                const data = XubenBridge.getTemplates();
                 AppState.templates = data.templates;
                 AppState.lineStyles = data.lineStyles;
                 AppState.regionColors = data.regionColors;

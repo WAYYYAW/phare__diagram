@@ -191,7 +191,7 @@ function onTemplateChange() {
     const params = {};
     tmpl.params.forEach(p => { params[p.key] = p.default; });
 
-    const result = xubenComputeTemplatePoints(name, JSON.stringify(params));
+    const result = XubenBridge.computeTemplatePoints(name, JSON.stringify(params));
     if (result && !result.error) {
         state.points = result.points;
         state.lines = result.lines;
@@ -295,7 +295,7 @@ function onCalcLever() {
         label: p.label, comp: p.comp, temp: p.temp
     })));
     const lnsJSON = JSON.stringify(state.lines);
-    state.calcRes = xubenPerformLeverRule(ptsJSON, lnsJSON, comp, temp);
+    state.calcRes = XubenBridge.performLeverRule(ptsJSON, lnsJSON, comp, temp);
     renderBinaryChart();
     renderBinaryResult();
 }
@@ -375,7 +375,7 @@ function renderBinaryChart() {
         const p2 = state.points.find(p => p.label === ln.end);
         if (!p1 || !p2 || p1.comp == null || p2.comp == null) return;
 
-        const curve = xubenComputeBezierCurve(p1.comp, p1.temp, p2.comp, p2.temp, ln.curve, 40);
+        const curve = XubenBridge.computeBezierCurve(p1.comp, p1.temp, p2.comp, p2.temp, ln.curve, 40);
         const style = AppState.lineStyles[ln.type] || AppState.lineStyles['other'];
         const dashMap = { '-': 'solid', '--': 'dash', '-.': 'dashdot', ':': 'dot' };
         const isFirst = !shownTypes.has(ln.type);
@@ -467,7 +467,7 @@ function renderBinaryChart() {
                                 label: p.label, comp: p.comp, temp: p.temp
                             })));
                             const lnsJSON = JSON.stringify(state.lines);
-                            state.calcRes = xubenPerformLeverRule(ptsJSON, lnsJSON, cx, cy);
+                            state.calcRes = XubenBridge.performLeverRule(ptsJSON, lnsJSON, cx, cy);
                             renderBinaryChart();
                             renderBinaryResult();
                         }
@@ -489,7 +489,7 @@ function renderBinaryResult() {
     const ptsJSON = JSON.stringify(state.points.map(p => ({
         label: p.label, comp: p.comp, temp: p.temp
     })));
-    const regionName = xubenGetRegionAt(ptsJSON, tplName, cp, tp);
+    const regionName = XubenBridge.getRegionAt(ptsJSON, tplName, cp, tp);
 
     let html = `<div style="margin-top:12px;padding:12px;background:white;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">`;
     html += `<h3 style="margin-bottom:8px;">选定位置: B% = <strong>${cp.toFixed(2)}%</strong>, T = <strong>${tp.toFixed(2)}°C</strong></h3>`;

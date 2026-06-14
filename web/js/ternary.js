@@ -28,8 +28,8 @@ function ternReleaseMeshEntry(entry) {
     if (!entry) return;
     ['low', 'high'].forEach(kind => {
         var mesh = entry[kind];
-        if (mesh && mesh.handle && typeof xubenTernFreeCoonsMesh === 'function') {
-            try { xubenTernFreeCoonsMesh(mesh.handle); } catch (e) {}
+        if (mesh && mesh.handle) {
+            try { XubenBridge.ternary.freeCoonsMesh(mesh.handle); } catch (e) {}
         }
     });
 }
@@ -69,15 +69,15 @@ function ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, is3Edge, si, lod) {
 }
 
 function ternReleaseMeshHandle(mesh) {
-    if (!mesh || !mesh.handle || typeof xubenTernFreeCoonsMesh !== 'function') return;
-    try { xubenTernFreeCoonsMesh(mesh.handle); } catch (e) {}
+    if (!mesh || !mesh.handle) return;
+    try { XubenBridge.ternary.freeCoonsMesh(mesh.handle); } catch (e) {}
 }
 
 function ternBuildMeshHandle(ptsJSON, lnsJSON, idxJSON, is3Edge, kind) {
     var n = kind === 'high' ? TERN_COONS_HIGH_N : TERN_COONS_LOW_N;
     var meta = is3Edge
-        ? xubenTernBuildCoons3Edge(ptsJSON, lnsJSON, idxJSON, n)
-        : xubenTernBuildCoons4Edge(ptsJSON, lnsJSON, idxJSON, n);
+        ? XubenBridge.ternary.buildCoons3Edge(ptsJSON, lnsJSON, idxJSON, n)
+        : XubenBridge.ternary.buildCoons4Edge(ptsJSON, lnsJSON, idxJSON, n);
     if (!meta || !meta.numVerts || !meta.handle) return null;
     return meta;
 }
@@ -147,9 +147,7 @@ let ternHighPrecision = false;
 
 function togglePrecision(high) {
     ternHighPrecision = high;
-    if (typeof xubenTernSetPrecision === 'function') {
-        xubenTernSetPrecision(high);
-    }
+    XubenBridge.ternary.setPrecision(high);
     ternInvalidateMeshCache();
     renderTernaryCharts();
 }
@@ -634,7 +632,7 @@ function renderTernary3d() {
     if (validPts.length > 0) {
         const tx = [], ty = [], tz = [], tlbls = [], thovers = [];
         validPts.forEach(p => {
-            const r = xubenTernTo3d(p.a, p.b, p.c, p.temp);
+            const r = XubenBridge.ternary.to3d(p.a, p.b, p.c, p.temp);
             tx.push(r.x); ty.push(r.y); tz.push(r.z); tlbls.push(p.label);
             thovers.push(`${p.label}<br>A=${p.a}% B=${p.b}% C=${p.c}%<br>T=${p.temp}°C`);
         });
@@ -658,7 +656,7 @@ function renderTernary3d() {
         if (!sp || !ep) return;
         const spJSON = JSON.stringify(sp);
         const epJSON = JSON.stringify(ep);
-        const curve = xubenTernBuildBezier(spJSON, epJSON, ln.curve_x, ln.curve_y, ln.curve_z);
+        const curve = XubenBridge.ternary.buildBezier(spJSON, epJSON, ln.curve_x, ln.curve_y, ln.curve_z);
         if (!curve) return;
         traces.push({
             x: curve.xs, y: curve.ys, z: curve.zs,
@@ -781,15 +779,15 @@ function renderTernary3d() {
             if (!infoEl) return;
 
             if (p.data && p.data.name === '坐标面') {
-                const r = xubenTernFrom3d(p.x, p.y);
+                const r = XubenBridge.ternary.from3d(p.x, p.y);
                 infoEl.innerHTML = `<span style="color:#333;"><b>📍 坐标:</b> A=${r.a}% B=${r.b}% C=${r.c}% | x=${p.x.toFixed(4)} y=${p.y.toFixed(4)} z=${p.z.toFixed(1)}°C</span>`;
             } else if (p.data && p.data.name === '数据点') {
                 infoEl.innerHTML = `<span style="color:#333;">${p.hovertext || p.text}</span>`;
             } else if (p.data && p.data.type === 'mesh3d' && p.data.name && p.data.name.startsWith('曲面')) {
-                const r = xubenTernFrom3d(p.x, p.y);
+                const r = XubenBridge.ternary.from3d(p.x, p.y);
                 infoEl.innerHTML = `<span style="color:#333;"><b>${p.data.name}</b> A=${r.a}% B=${r.b}% C=${r.c}% | T=${p.z.toFixed(1)}°C</span>`;
             } else {
-                const r = xubenTernFrom3d(p.x, p.y);
+                const r = XubenBridge.ternary.from3d(p.x, p.y);
                 infoEl.innerHTML = `<span style="color:#888;">A=${r.a}% B=${r.b}% C=${r.c}% | (${p.x.toFixed(4)}, ${p.y.toFixed(4)}, ${p.z.toFixed(1)})</span>`;
             }
         });
@@ -962,7 +960,7 @@ function renderTernary2d() {
         if (!sp || !ep) return;
         const spJSON = JSON.stringify(sp);
         const epJSON = JSON.stringify(ep);
-        const curve = xubenTernBuildBezier(spJSON, epJSON, ln.curve_x, ln.curve_y, ln.curve_z);
+        const curve = XubenBridge.ternary.buildBezier(spJSON, epJSON, ln.curve_x, ln.curve_y, ln.curve_z);
         if (!curve) return;
         traces.push({
             x: curve.xs, y: curve.ys,
@@ -977,7 +975,7 @@ function renderTernary2d() {
     if (validPts.length > 0) {
         const tx = [], ty = [], tlbls = [];
         validPts.forEach(p => {
-            const r = xubenTernTo3d(p.a, p.b, p.c, p.temp);
+            const r = XubenBridge.ternary.to3d(p.a, p.b, p.c, p.temp);
             tx.push(r.x); ty.push(r.y); tlbls.push(p.label);
         });
         traces.push({
