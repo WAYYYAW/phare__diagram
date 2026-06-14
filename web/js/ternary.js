@@ -18,6 +18,33 @@ let ternSliderRaf = 0;
 let ternPendingIsoTemp = null;
 let ternIsDraggingIso = false;
 
+function getTernaryTemplateNames() {
+    return listTemplateNames(AppState.ternaryTemplates);
+}
+
+function applyTernaryTemplateData(name, data) {
+    const state = AppState.ternary;
+    state.points = data.points || [];
+    state.lines = data.lines || [];
+    state.surfs = data.surfs || data.surfaces || [];
+    state.isoTemp = data.isoTemp != null ? data.isoTemp : null;
+    state.activeTemplate = name;
+}
+
+function loadInitialTernaryTemplate() {
+    if (!AppState.ternaryTemplates || !AppState.ternaryTemplates['简单共晶']) {
+        return;
+    }
+    const data = XubenBridge.getTernaryTemplate('简单共晶');
+    if (!data || data.error) {
+        return;
+    }
+    applyTernaryTemplateData('简单共晶', data);
+    if (AppState.currentPage === 'ternary') {
+        renderTernary();
+    }
+}
+
 // ---- Persistent zero-copy mesh cache ----
 //
 // Meshes are owned by WASM and referenced via handles. JS binds fresh
@@ -494,6 +521,11 @@ function renderTernary() {
 function renderTernaryToolbar() {
     const container = document.getElementById('ternaryToolbar');
     const state = AppState.ternary;
+    const templateNames = getTernaryTemplateNames();
+    const activeTemplate = state.activeTemplate || TERNARY_TEMPLATE_CUSTOM;
+    const templateOptions = templateNames.map(name =>
+        `<option value="${name}" ${activeTemplate === name ? 'selected' : ''}>${name}</option>`
+    ).join('');
 
     let html = `
         <div class="card ternary-sidebar-card">
@@ -507,6 +539,13 @@ function renderTernaryToolbar() {
                     <span>${state.lines.length} 线</span>
                     <span>${state.surfs.length} 面</span>
                 </div>
+            </div>
+            <div class="form-group">
+                <label for="ternaryTemplateSelect">模板</label>
+                <select id="ternaryTemplateSelect" onchange="loadTernaryTemplate(this.value)">
+                    ${templateOptions}
+                    <option value="${TERNARY_TEMPLATE_CUSTOM}" ${activeTemplate === TERNARY_TEMPLATE_CUSTOM ? 'selected' : ''}>${TERNARY_TEMPLATE_CUSTOM}</option>
+                </select>
             </div>
             <div class="tabs">
                 <button class="tab-btn ${ternActiveTab === 'tPtTab' ? 'active' : ''}" data-tab="tPtTab" onclick="switchTernaryTab('tPtTab')">特征点</button>
@@ -661,6 +700,7 @@ function removeTernSf(idx) {
 function onTernSfEdit(idx, raw) {
     const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
     AppState.ternary.surfs[idx].line_labels = parts;
+    ternMarkCustomTemplate();
     ternInvalidateMeshCache();
     renderTernaryCharts();
 }
@@ -670,8 +710,31 @@ function switchTernaryTab(tabId) {
     renderTernaryToolbar();
 }
 
+function ternMarkCustomTemplate() {
+    AppState.ternary.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
+}
+
+function loadTernaryTemplate(name) {
+    if (name === TERNARY_TEMPLATE_CUSTOM) {
+        AppState.ternary.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
+        renderTernaryToolbar();
+        return;
+    }
+
+    const data = XubenBridge.getTernaryTemplate(name);
+    if (!data || data.error) {
+        alert('模板不存在');
+        renderTernaryToolbar();
+        return;
+    }
+
+    applyTernaryTemplateData(name, data);
+    renderTernary();
+}
+
 function onTernPtEdit(idx, field, value) {
     AppState.ternary.points[idx][field] = value;
+    ternMarkCustomTemplate();
     ternInvalidateMeshCache();
     renderTernaryToolbar();
     renderTernaryCharts();
@@ -679,6 +742,7 @@ function onTernPtEdit(idx, field, value) {
 
 function onTernLnEdit(idx, field, value) {
     AppState.ternary.lines[idx][field] = value;
+    ternMarkCustomTemplate();
     ternInvalidateMeshCache();
     renderTernaryCharts();
 }
@@ -692,6 +756,7 @@ function addTernPt() {
     const label = document.getElementById('tPtLabel').value.trim() || nextAutoLabel(state.points.map(p => p.label));
     if (state.points.some(p => p.label === label)) { alert('标签已存在'); return; }
     state.points.push({ label, a, b, c, temp });
+    ternMarkCustomTemplate();
     renderTernary();
 }
 
@@ -700,6 +765,7 @@ function removeTernPt(idx) {
     const label = state.points[idx].label;
     state.points.splice(idx, 1);
     state.lines = state.lines.filter(l => l.start !== label && l.end !== label);
+    ternMarkCustomTemplate();
     renderTernary();
 }
 
@@ -719,11 +785,13 @@ function addTernLn() {
     const pair = [start, end, curve_x, curve_y, curve_z].sort().join('|');
     if (state.lines.some(l => [l.start, l.end, l.curve_x, l.curve_y, l.curve_z].sort().join('|') === pair)) { alert('两点间已存在曲率z相同的连线'); return; }
     state.lines.push({ start, end, curve_x, curve_y, curve_z });
+    ternMarkCustomTemplate();
     renderTernary();
 }
 
 function removeTernLn(idx) {
     AppState.ternary.lines.splice(idx, 1);
+    ternMarkCustomTemplate();
     renderTernary();
 }
 
@@ -773,6 +841,7 @@ function addTernSurface() {
     }
 
     state.surfs.push({ line_labels: pairs });
+    ternMarkCustomTemplate();
     renderTernary();
 }
 
@@ -832,6 +901,7 @@ function clearTernary() {
     AppState.ternary.lines = [];
     AppState.ternary.surfs = [];
     AppState.ternary.isoTemp = null;
+    AppState.ternary.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
     renderTernary();
 }
 
@@ -865,8 +935,9 @@ function loadTernary() {
                 const state = AppState.ternary;
                 state.points = (data.points || []).map(p => ({ label: p.label, a: p.a, b: p.b, c: p.c, temp: p.temp }));
                 state.lines = (data.lines || []).map(l => ({ start: l.start, end: l.end, curve_x: l.curve_x, curve_y: l.curve_y, curve_z: l.curve_z }));
-                state.surfs = (data.surfaces || []).map(s => ({ line_labels: s.line_labels }));
+                state.surfs = (data.surfs || data.surfaces || []).map(s => ({ line_labels: s.line_labels }));
                 state.isoTemp = null;
+                state.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
                 renderTernary();
             } catch(err) {
                 alert('文件格式错误');

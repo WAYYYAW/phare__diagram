@@ -14,6 +14,10 @@ type TernaryLine struct {
 	CurveZ float64 `json:"curve_z"`
 }
 
+type TernarySurface struct {
+	LineLabels []string `json:"line_labels"`
+}
+
 type TernaryPoint struct {
 	Label string  `json:"label"`
 	A     float64 `json:"a"`
@@ -55,6 +59,13 @@ type Topology struct {
 type Template struct {
 	Params   []ParamDef `json:"params"`
 	Topology Topology   `json:"topology"`
+}
+
+type TernaryTemplate struct {
+	Points   []TernaryPoint   `json:"points"`
+	Lines    []TernaryLine    `json:"lines"`
+	Surfaces []TernarySurface `json:"surfaces"`
+	IsoTemp  *float64         `json:"isoTemp,omitempty"`
 }
 
 type LeverResult struct {

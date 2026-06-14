@@ -1,6 +1,19 @@
+const TEMPLATE_CUSTOM = '自定义';
+const BINARY_TEMPLATE_CUSTOM = TEMPLATE_CUSTOM;
+const TERNARY_TEMPLATE_CUSTOM = TEMPLATE_CUSTOM;
+
+function cloneTemplateValue(data) {
+    return JSON.parse(JSON.stringify(data));
+}
+
+function listTemplateNames(templates) {
+    return Object.keys(templates || {}).filter(name => !!templates[name]);
+}
+
 // App state
 const AppState = {
     templates: null,
+    ternaryTemplates: null,
     lineStyles: null,
     regionColors: null,
     wasmReady: false,
@@ -10,7 +23,7 @@ const AppState = {
     binary: {
         points: [],
         lines: [],
-        activeTemplate: '手动模式',
+        activeTemplate: BINARY_TEMPLATE_CUSTOM,
         axisRange: { xmin: 0, xmax: 100, ymin: 0, ymax: 1500 },
         calcMode: false,
         calcPos: null,
@@ -20,32 +33,11 @@ const AppState = {
 
     // Ternary state
     ternary: {
-        points: [
-            { label: 'A', a: 100, b: 0, c: 0, temp: 1000 },
-            { label: 'B', a: 0, b: 100, c: 0, temp: 1050 },
-            { label: 'C', a: 0, b: 0, c: 100, temp: 1100 },
-            { label: 'D', a: 45, b: 55, c: 0, temp: 900 },
-            { label: 'E', a: 0, b: 45, c: 55, temp: 850 },
-            { label: 'F', a: 45, b: 0, c: 55, temp: 800 },
-            { label: 'G', a: 32, b: 37, c: 31, temp: 700 },
-        ],
-        lines: [
-            { start: 'A', end: 'F', curve_x: 0, curve_y: 0, curve_z: 25 },
-            { start: 'F', end: 'C', curve_x: 0, curve_y: 0, curve_z: 30 },
-            { start: 'C', end: 'E', curve_x: 0, curve_y: 0, curve_z: 30 },
-            { start: 'B', end: 'E', curve_x: 0, curve_y: 0, curve_z: 30 },
-            { start: 'A', end: 'D', curve_x: 0, curve_y: 0, curve_z: 30 },
-            { start: 'B', end: 'D', curve_x: 0, curve_y: 0, curve_z: 30 },
-            { start: 'D', end: 'G', curve_x: 0, curve_y: 10, curve_z: 10 },
-            { start: 'E', end: 'G', curve_x: 0, curve_y: 10, curve_z: -10 },
-            { start: 'F', end: 'G', curve_x: 10, curve_y: 0, curve_z: 10 },
-        ],
-        surfs: [
-            { line_labels: ['AD', 'DG', 'GF', 'FA'] },
-            { line_labels: ['BD', 'DG', 'GE', 'EB'] },
-            { line_labels: ['CF', 'FG', 'GE', 'EC'] },
-        ],
+        points: [],
+        lines: [],
+        surfs: [],
         isoTemp: null,
+        activeTemplate: TERNARY_TEMPLATE_CUSTOM,
     }
 };
 
@@ -97,12 +89,14 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const data = XubenBridge.getTemplates();
                 AppState.templates = data.templates;
+                AppState.ternaryTemplates = data.ternaryTemplates || {};
                 AppState.lineStyles = data.lineStyles;
                 AppState.regionColors = data.regionColors;
                 AppState.wasmReady = true;
                 document.getElementById('wasmStatus').textContent = 'WASM 已加载';
                 document.getElementById('wasmStatus').classList.add('loaded');
                 initBinary();
+                loadInitialTernaryTemplate();
             } catch(e) {
                 console.error('Init error:', e);
             }

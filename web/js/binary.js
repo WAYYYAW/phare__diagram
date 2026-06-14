@@ -3,6 +3,37 @@ let binaryModelVersion = 0;
 let binaryBaseTraceCache = { key: null, traces: null };
 let binaryPayloadCache = { version: -1, pointsJSON: '', linesJSON: '' };
 
+function getBinaryTemplateNames() {
+    return listTemplateNames(AppState.templates).filter(name => name !== '手动模式');
+}
+
+function markBinaryCustomTemplate() {
+    AppState.binary.activeTemplate = BINARY_TEMPLATE_CUSTOM;
+}
+
+function resetBinaryCalcState() {
+    AppState.binary.calcPos = null;
+    AppState.binary.calcRes = null;
+}
+
+function applyBinaryTemplateData(name, result) {
+    const state = AppState.binary;
+    state.points = result.points || [];
+    state.lines = result.lines || [];
+    state.activeTemplate = name;
+
+    const temps = state.points.filter(p => p.temp != null).map(p => p.temp);
+    const comps = state.points.filter(p => p.comp != null).map(p => p.comp);
+    const maxTemp = temps.length ? Math.max(...temps) : 1500;
+    const maxComp = comps.length ? Math.max(...comps) : 100;
+
+    state.axisRange.ymin = 0;
+    state.axisRange.ymax = maxTemp + 250;
+    state.axisRange.xmax = maxComp < 80 ? maxComp * 1.05 : 100;
+    state.axisRange.xmin = 0;
+    resetBinaryCalcState();
+}
+
 function bumpBinaryModelVersion() {
     binaryModelVersion += 1;
     binaryBaseTraceCache.key = null;
@@ -134,7 +165,7 @@ function getBinaryBaseTraces(xRange, yRange, tplName) {
 
     const traces = [];
 
-    if (state.showRegionFill && tplName !== '手动模式') {
+    if (state.showRegionFill && tplName !== BINARY_TEMPLATE_CUSTOM) {
         const tmpl = AppState.templates[tplName];
         if (tmpl && tmpl.topology && tmpl.topology.regions) {
             const ptMap = {};
@@ -247,7 +278,7 @@ function getBinaryLegendItems() {
     const items = [];
     const tplName = state.activeTemplate;
 
-    if (state.showRegionFill && tplName !== '手动模式') {
+    if (state.showRegionFill && tplName !== BINARY_TEMPLATE_CUSTOM) {
         const tmpl = AppState.templates[tplName];
         if (tmpl && tmpl.topology && tmpl.topology.regions) {
             tmpl.topology.regions.forEach((region, i) => {
@@ -342,7 +373,7 @@ function renderBinaryLegend() {
 function renderBinarySidebar() {
     const sidebar = document.getElementById('binarySidebar');
     const state = AppState.binary;
-    const templateNames = Object.keys(AppState.templates);
+    const templateNames = getBinaryTemplateNames();
 
     let html = `
         <div class="card">
@@ -350,6 +381,7 @@ function renderBinarySidebar() {
             <div class="form-group">
                 <select id="tplSelect" onchange="onTemplateChange()">
                     ${templateNames.map(n => `<option value="${n}" ${n === state.activeTemplate ? 'selected' : ''}>${n}</option>`).join('')}
+                    <option value="${BINARY_TEMPLATE_CUSTOM}" ${state.activeTemplate === BINARY_TEMPLATE_CUSTOM ? 'selected' : ''}>${BINARY_TEMPLATE_CUSTOM}</option>
                 </select>
             </div>
         </div>
@@ -519,13 +551,12 @@ function switchBinaryTab(tabId) {
 function onTemplateChange() {
     const name = document.getElementById('tplSelect').value;
     const state = AppState.binary;
-    state.activeTemplate = name;
 
-    if (name === '手动模式') {
+    if (name === BINARY_TEMPLATE_CUSTOM) {
+        state.activeTemplate = BINARY_TEMPLATE_CUSTOM;
         state.points = [];
         state.lines = [];
-        state.calcPos = null;
-        state.calcRes = null;
+        resetBinaryCalcState();
         bumpBinaryModelVersion();
         renderBinary();
         return;
@@ -539,18 +570,8 @@ function onTemplateChange() {
 
     const result = XubenBridge.computeTemplatePoints(name, JSON.stringify(params));
     if (result && !result.error) {
-        state.points = result.points;
-        state.lines = result.lines;
-
-        const maxTemp = Math.max(...state.points.filter(p => p.temp != null).map(p => p.temp));
-        const maxComp = Math.max(...state.points.filter(p => p.comp != null).map(p => p.comp));
-        state.axisRange.ymin = 0;
-        state.axisRange.ymax = maxTemp + 250;
-        state.axisRange.xmax = maxComp < 80 ? maxComp * 1.05 : 100;
-        state.axisRange.xmin = 0;
+        applyBinaryTemplateData(name, result);
     }
-    state.calcPos = null;
-    state.calcRes = null;
     bumpBinaryModelVersion();
     renderBinarySidebar();
     renderBinaryChart(false);
@@ -559,14 +580,18 @@ function onTemplateChange() {
 
 function onPointEdit(idx, field, value) {
     AppState.binary.points[idx][field] = value;
+    markBinaryCustomTemplate();
     bumpBinaryModelVersion();
+    renderBinarySidebar();
     renderBinaryChart();
     renderBinaryResult();
 }
 
 function onLineEdit(idx, field, value) {
     AppState.binary.lines[idx][field] = value;
+    markBinaryCustomTemplate();
     bumpBinaryModelVersion();
+    renderBinarySidebar();
     renderBinaryChart();
     renderBinaryResult();
 }
@@ -582,6 +607,7 @@ function addPoint() {
         return;
     }
     state.points.push({ label: finalLabel, comp, temp });
+    markBinaryCustomTemplate();
     bumpBinaryModelVersion();
     renderBinary();
 }
@@ -591,6 +617,7 @@ function removePoint(idx) {
     const label = state.points[idx].label;
     state.points.splice(idx, 1);
     state.lines = state.lines.filter(l => l.start !== label && l.end !== label);
+    markBinaryCustomTemplate();
     bumpBinaryModelVersion();
     renderBinary();
 }
@@ -614,12 +641,14 @@ function addLine() {
         return;
     }
     state.lines.push({ start, end, type, curve });
+    markBinaryCustomTemplate();
     bumpBinaryModelVersion();
     renderBinary();
 }
 
 function removeLine(idx) {
     AppState.binary.lines.splice(idx, 1);
+    markBinaryCustomTemplate();
     bumpBinaryModelVersion();
     renderBinary();
 }
@@ -740,7 +769,9 @@ function renderBinaryResult() {
     const [cp, tp] = state.calcPos;
     const tplName = state.activeTemplate;
     const payloads = getBinaryPayloads();
-    const regionName = XubenBridge.getRegionAt(payloads.pointsJSON, tplName, cp, tp);
+    const regionName = tplName === BINARY_TEMPLATE_CUSTOM
+        ? ''
+        : XubenBridge.getRegionAt(payloads.pointsJSON, tplName, cp, tp);
 
     let html = '<div class="binary-result-card">';
     html += `<h3 class="binary-result-title">选定位置: B% = <strong>${cp.toFixed(2)}%</strong>, T = <strong>${tp.toFixed(2)}°C</strong></h3>`;

@@ -36,6 +36,10 @@ const XubenBridge = (() => {
             return call('xubenComputeTemplatePoints', templateName, paramsJSON);
         },
 
+        getTernaryTemplate(templateName) {
+            return call('xubenGetTernaryTemplate', templateName);
+        },
+
         ternary: {
             buildBezier(spJSON, epJSON, curveX, curveY, curveZ) {
                 return call('xubenTernBuildBezier', spJSON, epJSON, curveX, curveY, curveZ);

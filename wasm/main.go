@@ -92,8 +92,18 @@ func getTemplatesJS(this js.Value, args []js.Value) interface{} {
 			}
 		}
 	}
+
+	ternaryExport := make(map[string]*TernaryTemplate)
+	for name, tmpl := range TernaryTemplates {
+		if tmpl == nil {
+			ternaryExport[name] = nil
+		} else {
+			ternaryExport[name] = tmpl
+		}
+	}
 	res := map[string]interface{}{
-		"templates": export,
+		"templates":        export,
+		"ternaryTemplates": ternaryExport,
 		"lineStyles": map[string]interface{}{
 			"liquidus":   map[string]interface{}{"color": "#1565C0", "ls": "-", "lw": 2.5, "label": "液相线"},
 			"solidus":    map[string]interface{}{"color": "#E53935", "ls": "-", "lw": 2.5, "label": "固相线"},
@@ -196,6 +206,18 @@ func computeTemplatePointsJS(this js.Value, args []js.Value) interface{} {
 		"points": pts,
 		"lines":  lns,
 	})
+}
+
+func getTernaryTemplateJS(this js.Value, args []js.Value) interface{} {
+	if len(args) < 1 {
+		return js.Undefined()
+	}
+	name := args[0].String()
+	tmpl, ok := TernaryTemplates[name]
+	if !ok || tmpl == nil {
+		return jsJSON(map[string]interface{}{"error": "template not found"})
+	}
+	return jsJSON(tmpl)
 }
 
 func ternBuildBezierJS(this js.Value, args []js.Value) interface{} {
@@ -369,6 +391,7 @@ func main() {
 	js.Global().Set("xubenPerformLeverRule", js.FuncOf(performLeverRuleJS))
 	js.Global().Set("xubenGetRegionAt", js.FuncOf(getRegionAtJS))
 	js.Global().Set("xubenComputeTemplatePoints", js.FuncOf(computeTemplatePointsJS))
+	js.Global().Set("xubenGetTernaryTemplate", js.FuncOf(getTernaryTemplateJS))
 	js.Global().Set("xubenTernBuildBezier", js.FuncOf(ternBuildBezierJS))
 	js.Global().Set("xubenTernSetPrecision", js.FuncOf(ternSetPrecisionJS))
 	js.Global().Set("xubenTernBuildCoons3Edge", js.FuncOf(ternBuildCoons3edgeJS))
