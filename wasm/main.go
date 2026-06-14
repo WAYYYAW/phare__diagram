@@ -3,6 +3,14 @@ package main
 import (
 	"encoding/json"
 	"syscall/js"
+	"unsafe"
+)
+
+// coonsMeshPool pins active Coons meshes against GC while JS holds TypedArray
+// views into WASM linear memory.
+var (
+	coonsMeshPool          = map[uint32]*CoonsMesh{}
+	nextCoonsHandle uint32 = 1
 )
 
 func jsJSON(data interface{}) interface{} {
@@ -229,38 +237,106 @@ func ternSetPrecisionJS(this js.Value, args []js.Value) interface{} {
 	return js.ValueOf(true)
 }
 
+// ---- Zero-copy Coons mesh exports ----
+//
+// These functions compute the Coons patch and store the flat slices in
+// coonsMeshCache (package-level, pinned against GC).  They return a small
+// metadata object { ptrX, ptrY, ptrZ, ptrI, ptrJ, ptrK, numVerts, numTris }.
+//
+// JS side: use the numeric pointers as byte offsets into
+//   wasmInstance.exports.memory.buffer
+// to construct TypedArray views:
+//
+//   const mem = wasmInst.exports.memory.buffer;
+//   const xs = new Float64Array(mem, meta.ptrX, meta.numVerts);  // 8-byte aligned
+//   const is = new Int32Array(  mem, meta.ptrI, meta.numTris);   // 4-byte aligned
+//
+// IMPORTANT: Float64 requires 8-byte alignment; Int32 requires 4-byte alignment.
+// Go's memory allocator guarantees this for []float64 and []int32 backing arrays.
+//
+// The old JSON-based functions (ternBuildCoons3edgeJS / ternBuildCoons4edgeJS)
+// are replaced by these zero-copy versions.
+
+func coonsMetaJSON(handle uint32, m *CoonsMesh) interface{} {
+	if m == nil || m.X == nil {
+		return js.ValueOf(nil)
+	}
+	// unsafe.SliceData returns a pointer to the backing array.
+	// uintptr(unsafe.Pointer(...)) gives the offset in WASM linear memory.
+	meta := map[string]interface{}{
+		"handle":   handle,
+		"ptrX":     uintptr(unsafe.Pointer(unsafe.SliceData(m.X))),
+		"ptrY":     uintptr(unsafe.Pointer(unsafe.SliceData(m.Y))),
+		"ptrZ":     uintptr(unsafe.Pointer(unsafe.SliceData(m.Z))),
+		"ptrI":     uintptr(unsafe.Pointer(unsafe.SliceData(m.I))),
+		"ptrJ":     uintptr(unsafe.Pointer(unsafe.SliceData(m.J))),
+		"ptrK":     uintptr(unsafe.Pointer(unsafe.SliceData(m.K))),
+		"numVerts": m.NumVerts,
+		"numTris":  m.NumTris,
+	}
+	return jsJSON(meta)
+}
+
+func allocCoonsHandle(mesh *CoonsMesh) uint32 {
+	handle := nextCoonsHandle
+	nextCoonsHandle++
+	coonsMeshPool[handle] = mesh
+	return handle
+}
+
 func ternBuildCoons3edgeJS(this js.Value, args []js.Value) interface{} {
-	if len(args) < 3 {
+	if len(args) < 4 {
 		return js.Undefined()
 	}
 	pts := parseJSONTernaryPoints(args[0].String())
 	lns := parseJSONTernaryLines(args[1].String())
 	indices := parseJSONIntSlice(args[2].String())
+	n := args[3].Int()
 	if pts == nil || lns == nil || indices == nil {
 		return js.Undefined()
 	}
-	verts, tris := ternBuildCoons3edge(pts, lns, indices)
-	if verts == nil {
-		return jsJSON(nil)
+	mesh := ternBuildCoons3edge(pts, lns, indices, n)
+	if mesh == nil {
+		return js.ValueOf(nil)
 	}
-	return jsJSON(map[string]interface{}{"verts": verts, "tris": tris})
+	handle := allocCoonsHandle(mesh)
+	return coonsMetaJSON(handle, mesh)
 }
 
 func ternBuildCoons4edgeJS(this js.Value, args []js.Value) interface{} {
-	if len(args) < 3 {
+	if len(args) < 4 {
 		return js.Undefined()
 	}
 	pts := parseJSONTernaryPoints(args[0].String())
 	lns := parseJSONTernaryLines(args[1].String())
 	indices := parseJSONIntSlice(args[2].String())
+	n := args[3].Int()
 	if pts == nil || lns == nil || indices == nil {
 		return js.Undefined()
 	}
-	verts, tris := ternBuildCoons4edge(pts, lns, indices)
-	if verts == nil {
-		return jsJSON(nil)
+	mesh := ternBuildCoons4edge(pts, lns, indices, n)
+	if mesh == nil {
+		return js.ValueOf(nil)
 	}
-	return jsJSON(map[string]interface{}{"verts": verts, "tris": tris})
+	handle := allocCoonsHandle(mesh)
+	return coonsMetaJSON(handle, mesh)
+}
+
+func ternFreeCoonsMeshJS(this js.Value, args []js.Value) interface{} {
+	if len(args) < 1 {
+		return js.ValueOf(false)
+	}
+	handle := uint32(args[0].Int())
+	if _, ok := coonsMeshPool[handle]; !ok {
+		return js.ValueOf(false)
+	}
+	delete(coonsMeshPool, handle)
+	return js.ValueOf(true)
+}
+
+func ternFreeAllCoonsMeshesJS(this js.Value, args []js.Value) interface{} {
+	coonsMeshPool = map[uint32]*CoonsMesh{}
+	return js.ValueOf(true)
 }
 
 func ternTo3dJS(this js.Value, args []js.Value) interface{} {
@@ -297,6 +373,8 @@ func main() {
 	js.Global().Set("xubenTernSetPrecision", js.FuncOf(ternSetPrecisionJS))
 	js.Global().Set("xubenTernBuildCoons3Edge", js.FuncOf(ternBuildCoons3edgeJS))
 	js.Global().Set("xubenTernBuildCoons4Edge", js.FuncOf(ternBuildCoons4edgeJS))
+	js.Global().Set("xubenTernFreeCoonsMesh", js.FuncOf(ternFreeCoonsMeshJS))
+	js.Global().Set("xubenTernFreeAllCoonsMeshes", js.FuncOf(ternFreeAllCoonsMeshesJS))
 	js.Global().Set("xubenTernTo3d", js.FuncOf(ternTo3dJS))
 	js.Global().Set("xubenTernFrom3d", js.FuncOf(ternFrom3dJS))
 	js.Global().Set("xubenTriPointInTriangle", js.FuncOf(triPointInTriangleJS))

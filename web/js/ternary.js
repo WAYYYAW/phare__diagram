@@ -7,6 +7,142 @@ let ternShowCoords = false;
 let ternActiveTab = 'tPtTab';
 let ternShowAxes = false;
 let ternCollapsed = { pt: false, ln: false, sf: false };
+const TERN_COONS_LOW_N = 18;
+const TERN_COONS_HIGH_N = 60;
+let ternModelVersion = 0;
+let ternSliderRaf = 0;
+let ternPendingIsoTemp = null;
+let ternIsDraggingIso = false;
+
+// ---- Persistent zero-copy mesh cache ----
+//
+// Meshes are owned by WASM and referenced via handles. JS binds fresh
+// TypedArray views on demand so it survives WASM memory growth.
+let ternMeshCache = Object.create(null);
+
+function ternBumpModelVersion() {
+    ternModelVersion += 1;
+}
+
+function ternReleaseMeshEntry(entry) {
+    if (!entry) return;
+    ['low', 'high'].forEach(kind => {
+        var mesh = entry[kind];
+        if (mesh && mesh.handle && typeof xubenTernFreeCoonsMesh === 'function') {
+            try { xubenTernFreeCoonsMesh(mesh.handle); } catch (e) {}
+        }
+    });
+}
+
+function ternInvalidateMeshCache() {
+    Object.keys(ternMeshCache).forEach(key => ternReleaseMeshEntry(ternMeshCache[key]));
+    ternMeshCache = Object.create(null);
+    ternBumpModelVersion();
+}
+
+function ternMeshCacheKey(idxJSON, is3Edge, surfaceIndex) {
+    return [surfaceIndex, is3Edge ? '3' : '4', idxJSON].join('|');
+}
+
+function ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, is3Edge, si, lod) {
+    var key = ternMeshCacheKey(idxJSON, is3Edge, si);
+    var entry = ternMeshCache[key];
+    if (!entry || entry.version !== ternModelVersion) {
+        ternReleaseMeshEntry(entry);
+        entry = { version: ternModelVersion, low: null, high: null };
+        ternMeshCache[key] = entry;
+    }
+
+    var kind = lod === 'high' ? 'high' : 'low';
+    if (!entry[kind]) {
+        entry[kind] = ternBuildMeshHandle(ptsJSON, lnsJSON, idxJSON, is3Edge, kind);
+    }
+    if (!entry[kind]) return null;
+
+    var views = ternBindMeshViews(entry[kind]);
+    if (views) return views;
+
+    ternReleaseMeshHandle(entry[kind]);
+    entry[kind] = ternBuildMeshHandle(ptsJSON, lnsJSON, idxJSON, is3Edge, kind);
+    if (!entry[kind]) return null;
+    return ternBindMeshViews(entry[kind]);
+}
+
+function ternReleaseMeshHandle(mesh) {
+    if (!mesh || !mesh.handle || typeof xubenTernFreeCoonsMesh !== 'function') return;
+    try { xubenTernFreeCoonsMesh(mesh.handle); } catch (e) {}
+}
+
+function ternBuildMeshHandle(ptsJSON, lnsJSON, idxJSON, is3Edge, kind) {
+    var n = kind === 'high' ? TERN_COONS_HIGH_N : TERN_COONS_LOW_N;
+    var meta = is3Edge
+        ? xubenTernBuildCoons3Edge(ptsJSON, lnsJSON, idxJSON, n)
+        : xubenTernBuildCoons4Edge(ptsJSON, lnsJSON, idxJSON, n);
+    if (!meta || !meta.numVerts || !meta.handle) return null;
+    return meta;
+}
+
+function ternBindMeshViews(meta) {
+    var mem = getWasmMemory();
+    if (!mem) return null;
+    if (!ternValidateMeshMeta(meta, mem.byteLength)) return null;
+
+    return {
+        handle: meta.handle,
+        numVerts: meta.numVerts,
+        numTris: meta.numTris,
+        xs: new Float64Array(mem, meta.ptrX, meta.numVerts),
+        ys: new Float64Array(mem, meta.ptrY, meta.numVerts),
+        zs: new Float64Array(mem, meta.ptrZ, meta.numVerts),
+        is: new Int32Array(mem, meta.ptrI, meta.numTris),
+        js: new Int32Array(mem, meta.ptrJ, meta.numTris),
+        ks: new Int32Array(mem, meta.ptrK, meta.numTris),
+    };
+}
+
+function ternValidateMeshMeta(meta, byteLength) {
+    function inRange(ptr, bytes) {
+        return Number.isInteger(ptr) && ptr >= 0 && ptr + bytes <= byteLength;
+    }
+    return inRange(meta.ptrX, meta.numVerts * 8) &&
+        inRange(meta.ptrY, meta.numVerts * 8) &&
+        inRange(meta.ptrZ, meta.numVerts * 8) &&
+        inRange(meta.ptrI, meta.numTris * 4) &&
+        inRange(meta.ptrJ, meta.numTris * 4) &&
+        inRange(meta.ptrK, meta.numTris * 4);
+}
+
+// getWasmMemory returns the WASM linear memory ArrayBuffer, trying multiple
+// access paths in order of preference.  WASM memory can grow, so we fetch a
+// fresh buffer reference every time.
+function getWasmMemory() {
+    // Helper: scan exports for any WebAssembly.Memory (Go uses "mem" or "memory")
+    function findMem(ex) {
+        if (!ex) return null;
+        // Try standard keys
+        var m = (ex.memory || ex.mem);
+        if (m instanceof WebAssembly.Memory) return m.buffer;
+        // Fallback: scan all exports
+        for (var k in ex) {
+            if (ex[k] instanceof WebAssembly.Memory) return ex[k].buffer;
+        }
+        return null;
+    }
+
+    var buf;
+
+    // Path 1: lexical go variable (set by wasm_exec.js)
+    try { if (typeof go !== 'undefined') { buf = findMem(go._inst && go._inst.exports); if (buf) return buf; } } catch(e) {}
+
+    // Path 2: window.__go fallback
+    try { if (window.__go) { buf = findMem(window.__go._inst && window.__go._inst.exports); if (buf) return buf; } } catch(e) {}
+
+    // Path 3: window.__wasmInst
+    try { if (window.__wasmInst) { buf = findMem(window.__wasmInst.exports); if (buf) return buf; } } catch(e) {}
+
+    return null;
+}
+
 let ternHighPrecision = false;
 
 function togglePrecision(high) {
@@ -14,7 +150,42 @@ function togglePrecision(high) {
     if (typeof xubenTernSetPrecision === 'function') {
         xubenTernSetPrecision(high);
     }
+    ternInvalidateMeshCache();
     renderTernaryCharts();
+}
+
+function ternCurrentLod() {
+    if (ternIsDraggingIso) return 'low';
+    return ternHighPrecision ? 'high' : 'low';
+}
+
+function ternSetDragging(active) {
+    ternIsDraggingIso = active;
+}
+
+function ternScheduleIsoUpdate() {
+    if (ternSliderRaf) return;
+    ternSliderRaf = requestAnimationFrame(() => {
+        ternSliderRaf = 0;
+        if (ternPendingIsoTemp == null) return;
+        AppState.ternary.isoTemp = ternPendingIsoTemp;
+        renderTernary2d();
+        ternUpdateIsoPlane3d(ternPendingIsoTemp);
+    });
+}
+
+function ternUpdateIsoPlane3d(val) {
+    try {
+        var chart3d = document.getElementById('ternaryChart3d');
+        if (!chart3d || !chart3d.data) return;
+        var traces = chart3d.data;
+        for (var i = traces.length - 1; i >= 0; i--) {
+            if (traces[i].type === 'mesh3d' && traces[i].name && traces[i].name.indexOf('等温面') >= 0) {
+                Plotly.restyle('ternaryChart3d', { z: [[val, val, val]], name: [[`等温面 ${val}°C`]] }, i);
+                break;
+            }
+        }
+    } catch (e) {}
 }
 
 // Collapsible section helpers
@@ -38,6 +209,8 @@ function collapsibleWrap(label, count, content, key) {
 
 function renderTernary() {
     const state = AppState.ternary;
+    ternInvalidateMeshCache();
+    ternPendingIsoTemp = state.isoTemp;
     renderTernaryToolbar();
     renderTernaryCharts();
 }
@@ -190,6 +363,7 @@ function removeTernSf(idx) {
 function onTernSfEdit(idx, raw) {
     const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
     AppState.ternary.surfs[idx].line_labels = parts;
+    ternInvalidateMeshCache();
     renderTernaryCharts();
 }
 
@@ -200,11 +374,13 @@ function switchTernaryTab(tabId) {
 
 function onTernPtEdit(idx, field, value) {
     AppState.ternary.points[idx][field] = value;
+    ternInvalidateMeshCache();
     renderTernaryCharts();
 }
 
 function onTernLnEdit(idx, field, value) {
     AppState.ternary.lines[idx][field] = value;
+    ternInvalidateMeshCache();
     renderTernaryCharts();
 }
 
@@ -308,7 +484,11 @@ function ternBuildIsoSlider() {
     return `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
         <span style="font-size:11px;white-space:nowrap;color:#555;">等温面 T</span>
         <input type="range" id="ternIsoSlider" min="${TERN_MIN}" max="${TERN_MAX}" value="${val}" step="${step}"
-            oninput="ternIsoSliderChange(parseInt(this.value), 'slider')" style="flex:1;accent-color:#FF8C00;">
+            oninput="ternIsoSliderChange(parseInt(this.value), 'slider')"
+            onpointerdown="ternSetDragging(true)"
+            onpointerup="ternFinalizeIsoDrag(parseInt(this.value))"
+            onchange="ternFinalizeIsoDrag(parseInt(this.value))"
+            style="flex:1;accent-color:#FF8C00;">
         <input type="number" id="ternIsoInput" value="${val}" min="${TERN_MIN}" max="${TERN_MAX}" step="${step}"
             onchange="ternIsoSliderChange(parseInt(this.value)||${TERN_MIN}, 'input')"
             style="width:65px;font-size:12px;padding:2px 4px;text-align:center;color:#FF8C00;font-weight:600;border:1px solid #ddd;border-radius:4px;">
@@ -316,8 +496,7 @@ function ternBuildIsoSlider() {
 }
 
 function ternIsoSliderChange(val, src) {
-    const state = AppState.ternary;
-    state.isoTemp = val;
+    ternPendingIsoTemp = val;
     if (src !== 'slider') {
         const slider = document.getElementById('ternIsoSlider');
         if (slider) slider.value = val;
@@ -326,6 +505,23 @@ function ternIsoSliderChange(val, src) {
         const input = document.getElementById('ternIsoInput');
         if (input) input.value = val;
     }
+    if (src === 'input') {
+        AppState.ternary.isoTemp = val;
+        renderTernaryCharts();
+        return;
+    }
+    ternSetDragging(true);
+    ternScheduleIsoUpdate();
+}
+
+function ternFinalizeIsoDrag(val) {
+    ternPendingIsoTemp = val;
+    ternSetDragging(false);
+    AppState.ternary.isoTemp = val;
+    const input = document.getElementById('ternIsoInput');
+    if (input) input.value = val;
+    const slider = document.getElementById('ternIsoSlider');
+    if (slider) slider.value = val;
     renderTernaryCharts();
 }
 
@@ -494,27 +690,16 @@ function renderTernary3d() {
             const ptsJSON = JSON.stringify(state.points);
             const lnsJSON = JSON.stringify(state.lines);
             const idxJSON = JSON.stringify(indices);
-            let result;
-            if (indices.length === 3) {
-                result = xubenTernBuildCoons3Edge(ptsJSON, lnsJSON, idxJSON);
-            } else {
-                result = xubenTernBuildCoons4Edge(ptsJSON, lnsJSON, idxJSON);
-            }
-            if (result && result.verts) {
-                const verts = result.verts;
-                const tris = result.tris;
+            const zcData = ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, indices.length === 3, si, ternCurrentLod());
+            if (zcData) {
                 const color = SURFACE_COLORS[si % SURFACE_COLORS.length];
                 traces.push({
-                    x: verts.map(v => v[0]),
-                    y: verts.map(v => v[1]),
-                    z: verts.map(v => v[2]),
-                    i: tris.map(t => t[0]),
-                    j: tris.map(t => t[1]),
-                    k: tris.map(t => t[2]),
+                    x: zcData.xs, y: zcData.ys, z: zcData.zs,
+                    i: zcData.is, j: zcData.js, k: zcData.ks,
                     type: 'mesh3d',
                     color: color,
                     opacity: 0.6,
-                    name: `曲面#${si + 1}`,
+                    name: '曲面#' + (si + 1),
                     hoverinfo: ternShowCoords ? 'x+y+z' : 'skip',
                 });
             }
@@ -585,7 +770,7 @@ function renderTernary3d() {
         hovermode: ternShowCoords ? 'closest' : false,
     };
 
-    Plotly.newPlot('ternaryChart3d', traces, layout, { responsive: true });
+    Plotly.react('ternaryChart3d', traces, layout, { responsive: true });
 
     if (ternShowCoords) {
         document.getElementById('ternaryChart3d').on('plotly_hover', (eventData) => {
@@ -646,16 +831,12 @@ function renderTernary2d() {
             const ptsJSON = JSON.stringify(state.points);
             const lnsJSON = JSON.stringify(state.lines);
             const idxJSON = JSON.stringify(sfIndices);
-            let result;
-            if (sfIndices.length === 3) {
-                result = xubenTernBuildCoons3Edge(ptsJSON, lnsJSON, idxJSON);
-            } else {
-                result = xubenTernBuildCoons4Edge(ptsJSON, lnsJSON, idxJSON);
-            }
-            if (!result || !result.verts) return;
+            const zcData = ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, sfIndices.length === 3, si, ternCurrentLod());
+            if (!zcData) return;
 
-            const verts = result.verts;
-            const tris = result.tris;
+            const xs = zcData.xs, ys = zcData.ys, zs = zcData.zs;
+            const is = zcData.is, js = zcData.js, ks = zcData.ks;
+            const numTris = zcData.numTris;
             const baseColor = SURFACE_COLORS[si % SURFACE_COLORS.length];
 
             const abovePolys = [];
@@ -668,48 +849,57 @@ function renderTernary2d() {
             };
             const poly2d = (x1, y1, x2, y2, x3, y3) => [x1, y1, x2, y2, x3, y3, x1, y1, null, null];
 
-            tris.forEach(tri => {
-                const v0 = verts[tri[0]], v1 = verts[tri[1]], v2 = verts[tri[2]];
-                const z0 = v0[2], z1 = v1[2], z2 = v2[2];
-                const flags = [+(z0 > isoTemp), +(z1 > isoTemp), +(z2 > isoTemp)];
-                const above = flags[0] + flags[1] + flags[2];
+            for (var ti = 0; ti < numTris; ti++) {
+                var i0 = is[ti], i1 = js[ti], i2 = ks[ti];
+                var x0 = xs[i0], y0 = ys[i0], z0 = zs[i0];
+                var x1 = xs[i1], y1 = ys[i1], z1 = zs[i1];
+                var x2 = xs[i2], y2 = ys[i2], z2 = zs[i2];
+                var flags = [+(z0 > isoTemp), +(z1 > isoTemp), +(z2 > isoTemp)];
+                var above = flags[0] + flags[1] + flags[2];
 
                 if (above === 3) {
-                    abovePolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                    abovePolys.push(poly2d(x0, y0, x1, y1, x2, y2));
                 } else if (above === 0) {
-                    belowPolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                    belowPolys.push(poly2d(x0, y0, x1, y1, x2, y2));
                 } else {
-                    const up = [], dn = [];
-                    [v0, v1, v2].forEach((v, i) => { (flags[i] ? up : dn).push(v); });
-                    const ips = [];
-                    for (let e = 0; e < 3; e++) {
-                        const a = [v0, v1, v2][e], b = [v0, v1, v2][(e + 1) % 3];
-                        if ((a[2] - isoTemp) * (b[2] - isoTemp) < 0) ips.push(lerp(a, b, a[2], b[2]));
+                    var upPts = [], dnPts = [];
+                    if (flags[0]) upPts.push(0); else dnPts.push(0);
+                    if (flags[1]) upPts.push(1); else dnPts.push(1);
+                    if (flags[2]) upPts.push(2); else dnPts.push(2);
+                    var px = [x0, x1, x2], py = [y0, y1, y2], pz = [z0, z1, z2];
+                    var ips = [];
+                    var lerpPt = function(ax, ay, az, bx, by, bz) {
+                        var t = (isoTemp - az) / (bz - az);
+                        return [ax + t * (bx - ax), ay + t * (by - ay)];
+                    };
+                    var getPt = function(idx) { return [px[idx], py[idx], pz[idx]]; };
+                    for (var e = 0; e < 3; e++) {
+                        var ea = e, eb = (e + 1) % 3;
+                        if ((pz[ea] - isoTemp) * (pz[eb] - isoTemp) < 0)
+                            ips.push(lerpPt(px[ea], py[ea], pz[ea], px[eb], py[eb], pz[eb]));
                     }
                     if (ips.length === 2) {
                         sfContour.push([ips[0], ips[1]]);
                         if (above === 1) {
-                            const A = up[0];
-                            abovePolys.push(poly2d(A[0], A[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                            belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                            belowPolys.push(poly2d(dn[0][0], dn[0][1], ips[1][0], ips[1][1], dn[1][0], dn[1][1]));
+                            var A = upPts[0];
+                            abovePolys.push(poly2d(px[A], py[A], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            belowPolys.push(poly2d(px[dnPts[0]], py[dnPts[0]], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            belowPolys.push(poly2d(px[dnPts[0]], py[dnPts[0]], ips[1][0], ips[1][1], px[dnPts[1]], py[dnPts[1]]));
                         } else {
-                            const B = dn[0];
-                            abovePolys.push(poly2d(up[0][0], up[0][1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
-                            abovePolys.push(poly2d(up[0][0], up[0][1], ips[1][0], ips[1][1], up[1][0], up[1][1]));
-                            belowPolys.push(poly2d(B[0], B[1], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            var B = dnPts[0];
+                            abovePolys.push(poly2d(px[upPts[0]], py[upPts[0]], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
+                            abovePolys.push(poly2d(px[upPts[0]], py[upPts[0]], ips[1][0], ips[1][1], px[upPts[1]], py[upPts[1]]));
+                            belowPolys.push(poly2d(px[B], py[B], ips[0][0], ips[0][1], ips[1][0], ips[1][1]));
                         }
                     } else {
-                        // Edge case: vertex exactly on plane (z===isoTemp),
-                        // edge crossing detection fails. Treat by majority.
                         if (above >= 2) {
-                            abovePolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                            abovePolys.push(poly2d(x0, y0, x1, y1, x2, y2));
                         } else {
-                            belowPolys.push(poly2d(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]));
+                            belowPolys.push(poly2d(x0, y0, x1, y1, x2, y2));
                         }
                     }
                 }
-            });
+            }
 
             // Above-plane fill
             if (abovePolys.length > 0) {
@@ -812,4 +1002,3 @@ function renderTernary2d() {
 
     Plotly.react('ternaryChart2d', traces, layout, { responsive: true });
 }
-

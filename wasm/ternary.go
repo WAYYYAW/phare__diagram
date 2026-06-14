@@ -120,7 +120,24 @@ func triIdx(n, i, j int) int {
 	return i*(2*n+3-i)/2 + j
 }
 
-func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []int) ([][3]float64, [][3]int) {
+// CoonsMesh holds flat slices suitable for zero-copy transfer to JS.
+// Plotly mesh3d expects: x, y, z as flat float arrays, and i, j, k as flat int arrays.
+// Float64 is 8-byte aligned; int32 is 4-byte aligned in WASM linear memory.
+type CoonsMesh struct {
+	X, Y, Z  []float64
+	I, J, K  []int32
+	NumVerts int
+	NumTris  int
+}
+
+func normalizeCoonsN(n int) int {
+	if n < 2 {
+		return 2
+	}
+	return n
+}
+
+func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []int, n int) *CoonsMesh {
 	curveEnds := make([][2]string, len(lineIndices))
 	for idx, li := range lineIndices {
 		curveEnds[idx] = [2]string{lns[li].Start, lns[li].End}
@@ -139,7 +156,7 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 		}
 	}
 	if len(vertLabels) != 3 {
-		return nil, nil
+		return nil
 	}
 
 	v0 := vertLabels[0]
@@ -173,7 +190,7 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 	i1 := find(v2, v0)
 	i2 := find(v0, v1)
 	if i0 < 0 || i1 < 0 || i2 < 0 {
-		return nil, nil
+		return nil
 	}
 
 	ptMap := make(map[string]TernaryPoint)
@@ -183,21 +200,25 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 
 	getPt := func(label string) TernaryPoint { return ptMap[label] }
 
-	ept := func(idx int, startLbl, endLbl string, t float64) [3]float64 {
+	ept := func(idx int, startLbl, endLbl string, t float64) (float64, float64, float64) {
 		ln := lns[idx]
 		sp := getPt(ln.Start)
 		ep := getPt(ln.End)
 		if sp.Label == startLbl && ep.Label == endLbl {
 			x, y, z := ternCurvePt(sp, ep, ln.CurveX, ln.CurveY, ln.CurveZ, t)
-			return [3]float64{x, y, z}
+			return x, y, z
 		}
 		x, y, z := ternCurvePt(sp, ep, ln.CurveX, ln.CurveY, ln.CurveZ, 1-t)
-		return [3]float64{x, y, z}
+		return x, y, z
 	}
 
-	n := TernCoonsN
+	n = normalizeCoonsN(n)
 	totalVerts := (n + 1) * (n + 2) / 2
-	pts3d := make([][3]float64, totalVerts)
+
+	// Flat slices instead of [][3]float64
+	xs := make([]float64, totalVerts)
+	ys := make([]float64, totalVerts)
+	zs := make([]float64, totalVerts)
 
 	for i := 0; i <= n; i++ {
 		for j := 0; j <= n-i; j++ {
@@ -210,15 +231,18 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 			gamma := float64(kVal) / float64(n)
 			denom := beta*gamma + gamma*alpha + alpha*beta
 
-			var pt [3]float64
+			idx := triIdx(n, i, j)
+
 			if denom < 1e-10 {
+				var px, py, pz float64
 				if alpha > 0.5 {
-					pt = ept(i2, v0, v1, 0)
+					px, py, pz = ept(i2, v0, v1, 0)
 				} else if beta > 0.5 {
-					pt = ept(i0, v1, v2, 0)
+					px, py, pz = ept(i0, v1, v2, 0)
 				} else {
-					pt = ept(i1, v2, v0, 0)
+					px, py, pz = ept(i1, v2, v0, 0)
 				}
+				xs[idx], ys[idx], zs[idx] = px, py, pz
 			} else {
 				t0 := gamma / (beta + gamma)
 				if beta+gamma <= 1e-10 {
@@ -232,35 +256,61 @@ func ternBuildCoons3edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 				if alpha+beta <= 1e-10 {
 					t2 = 0.0
 				}
-				pe0 := ept(i0, v1, v2, t0)
-				pe1 := ept(i1, v2, v0, t1)
-				pe2 := ept(i2, v0, v1, t2)
+				pe0x, pe0y, pe0z := ept(i0, v1, v2, t0)
+				pe1x, pe1y, pe1z := ept(i1, v2, v0, t1)
+				pe2x, pe2y, pe2z := ept(i2, v0, v1, t2)
 
-				for k := 0; k < 3; k++ {
-					pt[k] = (beta*gamma*pe0[k] + gamma*alpha*pe1[k] + alpha*beta*pe2[k]) / denom
-				}
+				xs[idx] = (beta*gamma*pe0x + gamma*alpha*pe1x + alpha*beta*pe2x) / denom
+				ys[idx] = (beta*gamma*pe0y + gamma*alpha*pe1y + alpha*beta*pe2y) / denom
+				zs[idx] = (beta*gamma*pe0z + gamma*alpha*pe1z + alpha*beta*pe2z) / denom
 			}
-
-			pts3d[triIdx(n, i, j)] = pt
 		}
 	}
 
-	var tris [][3]int
+	// Pre-count triangles for allocation
+	numTris := 0
 	for i := 0; i < n; i++ {
 		for j := 0; j < n-i; j++ {
 			if n-i-j <= 0 {
 				continue
 			}
-			tris = append(tris, [3]int{triIdx(n, i, j), triIdx(n, i+1, j), triIdx(n, i, j+1)})
+			numTris++
 			if n-i-j > 1 {
-				tris = append(tris, [3]int{triIdx(n, i+1, j), triIdx(n, i+1, j+1), triIdx(n, i, j+1)})
+				numTris++
 			}
 		}
 	}
-	return pts3d, tris
+
+	iTris := make([]int32, numTris)
+	jTris := make([]int32, numTris)
+	kTris := make([]int32, numTris)
+	ti := 0
+	for i := 0; i < n; i++ {
+		for j := 0; j < n-i; j++ {
+			if n-i-j <= 0 {
+				continue
+			}
+			iTris[ti] = int32(triIdx(n, i, j))
+			jTris[ti] = int32(triIdx(n, i+1, j))
+			kTris[ti] = int32(triIdx(n, i, j+1))
+			ti++
+			if n-i-j > 1 {
+				iTris[ti] = int32(triIdx(n, i+1, j))
+				jTris[ti] = int32(triIdx(n, i+1, j+1))
+				kTris[ti] = int32(triIdx(n, i, j+1))
+				ti++
+			}
+		}
+	}
+
+	return &CoonsMesh{
+		X: xs, Y: ys, Z: zs,
+		I: iTris, J: jTris, K: kTris,
+		NumVerts: totalVerts, NumTris: numTris,
+	}
 }
 
-func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []int) ([][3]float64, [][3]int) {
+func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []int, n int) *CoonsMesh {
 	curveEnds := make([][2]string, len(lineIndices))
 	for idx, li := range lineIndices {
 		curveEnds[idx] = [2]string{lns[li].Start, lns[li].End}
@@ -279,7 +329,7 @@ func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 		}
 	}
 	if len(vertLabels) < 4 {
-		return nil, nil
+		return nil
 	}
 
 	v0 := vertLabels[0]
@@ -330,7 +380,7 @@ func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 	iv0 := find(v0, v3)
 	iv1 := find(v1, v2)
 	if iu0 < 0 || iu1 < 0 || iv0 < 0 || iv1 < 0 {
-		return nil, nil
+		return nil
 	}
 
 	ptMap := make(map[string]TernaryPoint)
@@ -340,49 +390,73 @@ func ternBuildCoons4edge(pts []TernaryPoint, lns []TernaryLine, lineIndices []in
 
 	getPt := func(label string) TernaryPoint { return ptMap[label] }
 
-	ept := func(idx int, slbl, elbl string, t float64) [3]float64 {
+	ept := func(idx int, slbl, elbl string, t float64) (float64, float64, float64) {
 		ln := lns[idx]
 		sp := getPt(ln.Start)
 		ep := getPt(ln.End)
 		if sp.Label == slbl && ep.Label == elbl {
 			x, y, z := ternCurvePt(sp, ep, ln.CurveX, ln.CurveY, ln.CurveZ, t)
-			return [3]float64{x, y, z}
+			return x, y, z
 		}
 		x, y, z := ternCurvePt(sp, ep, ln.CurveX, ln.CurveY, ln.CurveZ, 1-t)
-		return [3]float64{x, y, z}
+		return x, y, z
 	}
 
-	n := TernCoonsN
-	verts := make([][3]float64, n*n)
+	n = normalizeCoonsN(n)
+	numVerts := n * n
 
-	C00 := ept(iu0, v0, v1, 0.0)
-	C10 := ept(iu0, v0, v1, 1.0)
-	C01 := ept(iu1, v3, v2, 0.0)
-	C11 := ept(iu1, v3, v2, 1.0)
+	// Flat slices
+	xs := make([]float64, numVerts)
+	ys := make([]float64, numVerts)
+	zs := make([]float64, numVerts)
+
+	C00x, C00y, C00z := ept(iu0, v0, v1, 0.0)
+	C10x, C10y, C10z := ept(iu0, v0, v1, 1.0)
+	C01x, C01y, C01z := ept(iu1, v3, v2, 0.0)
+	C11x, C11y, C11z := ept(iu1, v3, v2, 1.0)
 
 	for i := 0; i < n; i++ {
 		u := float64(i) / float64(n-1)
-		Pu0 := ept(iu0, v0, v1, u)
-		Pu1 := ept(iu1, v3, v2, u)
+		Pu0x, Pu0y, Pu0z := ept(iu0, v0, v1, u)
+		Pu1x, Pu1y, Pu1z := ept(iu1, v3, v2, u)
 		for j := 0; j < n; j++ {
 			v := float64(j) / float64(n-1)
-			P0v := ept(iv0, v0, v3, v)
-			P1v := ept(iv1, v1, v2, v)
+			P0vx, P0vy, P0vz := ept(iv0, v0, v3, v)
+			P1vx, P1vy, P1vz := ept(iv1, v1, v2, v)
 			idx := i*n + j
-			for k := 0; k < 3; k++ {
-				verts[idx][k] = (1-v)*Pu0[k] + v*Pu1[k] + (1-u)*P0v[k] + u*P1v[k] -
-					((1-u)*(1-v)*C00[k] + u*(1-v)*C10[k] + (1-u)*v*C01[k] + u*v*C11[k])
-			}
+			xs[idx] = (1-v)*Pu0x + v*Pu1x + (1-u)*P0vx + u*P1vx -
+				((1-u)*(1-v)*C00x + u*(1-v)*C10x + (1-u)*v*C01x + u*v*C11x)
+			ys[idx] = (1-v)*Pu0y + v*Pu1y + (1-u)*P0vy + u*P1vy -
+				((1-u)*(1-v)*C00y + u*(1-v)*C10y + (1-u)*v*C01y + u*v*C11y)
+			zs[idx] = (1-v)*Pu0z + v*Pu1z + (1-u)*P0vz + u*P1vz -
+				((1-u)*(1-v)*C00z + u*(1-v)*C10z + (1-u)*v*C01z + u*v*C11z)
 		}
 	}
 
-	var tris [][3]int
+	numTris := 2 * (n - 1) * (n - 1)
+	iTris := make([]int32, numTris)
+	jTris := make([]int32, numTris)
+	kTris := make([]int32, numTris)
+	ti := 0
 	for i := 0; i < n-1; i++ {
 		for j := 0; j < n-1; j++ {
 			idx := i*n + j
-			tris = append(tris, [3]int{idx, idx + n, idx + 1})
-			tris = append(tris, [3]int{idx + 1, idx + n, idx + n + 1})
+			// First triangle: idx, idx+n, idx+1
+			iTris[ti] = int32(idx)
+			jTris[ti] = int32(idx + n)
+			kTris[ti] = int32(idx + 1)
+			ti++
+			// Second triangle: idx+1, idx+n, idx+n+1
+			iTris[ti] = int32(idx + 1)
+			jTris[ti] = int32(idx + n)
+			kTris[ti] = int32(idx + n + 1)
+			ti++
 		}
 	}
-	return verts, tris
+
+	return &CoonsMesh{
+		X: xs, Y: ys, Z: zs,
+		I: iTris, J: jTris, K: kTris,
+		NumVerts: numVerts, NumTris: numTris,
+	}
 }

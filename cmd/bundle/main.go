@@ -116,6 +116,8 @@ const wasmBase64 = "%s";
     const t1 = performance.now();
     const { instance } = await WebAssembly.instantiate(binary, go.importObject);
     const t2 = performance.now();
+    window.__go = go;
+    window.__wasmInst = instance; // for zero-copy TypedArray views
     go.run(instance);
     const t3 = performance.now();
     // Expose timing for analytics.js to pick up and report
