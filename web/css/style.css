@@ -91,6 +91,282 @@ body {
     min-width: 0;
 }
 
+#page-binary .sidebar-layout {
+    align-items: flex-start;
+}
+
+#page-binary .binary-layout {
+    align-items: stretch;
+}
+
+#page-binary .main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+#page-binary .binary-visual-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+#page-binary #binaryChart.chart-container {
+    min-height: 520px;
+    height: clamp(420px, 58vh, 560px);
+}
+
+.binary-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.binary-legend.is-empty {
+    display: none;
+}
+
+.binary-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12px;
+    color: #555;
+}
+
+.binary-legend-label {
+    white-space: nowrap;
+}
+
+.binary-legend-swatch {
+    display: inline-block;
+    flex: 0 0 auto;
+}
+
+.binary-legend-swatch.region {
+    width: 14px;
+    height: 14px;
+    background: var(--legend-color);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 3px;
+}
+
+.binary-legend-swatch.point {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--legend-color);
+}
+
+.binary-legend-swatch.point.ring {
+    border: 2px solid #333;
+}
+
+.binary-legend-line {
+    display: inline-block;
+    width: 24px;
+    height: 0;
+    border-top: 3px solid var(--legend-color);
+    flex: 0 0 auto;
+}
+
+.binary-legend-line.dash {
+    border-top-style: dashed;
+}
+
+.binary-legend-line.dot {
+    border-top-style: dotted;
+}
+
+.binary-legend-line.dashdot {
+    border-top-style: dashed;
+    position: relative;
+}
+
+.binary-legend-line.dashdot::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: var(--legend-color);
+}
+
+#page-binary .sidebar {
+    position: sticky;
+    top: 16px;
+    align-self: flex-start;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+}
+
+#binaryResult:empty {
+    display: none;
+}
+
+.binary-result-card {
+    padding: 12px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.binary-editor-row {
+    margin-bottom: 8px;
+}
+
+.binary-editor-add {
+    margin-bottom: 8px;
+}
+
+.binary-action-btn {
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.binary-result-title {
+    margin-bottom: 8px;
+}
+
+.binary-result-region {
+    padding: 6px 12px;
+    background: #e3f2fd;
+    border-radius: 5px;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.binary-result-panel {
+    padding: 12px;
+    border-radius: 5px;
+    font-size: 13px;
+}
+
+.binary-result-panel.two-phase {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+}
+
+.binary-result-panel.three-phase {
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+}
+
+.binary-result-panel.single-phase {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+}
+
+.binary-result-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+.binary-result-table td {
+    padding: 3px 8px;
+}
+
+.binary-result-table tr:not(:last-child) td {
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.binary-result-label {
+    font-weight: 500;
+}
+
+.binary-point-list .collapsible-body {
+    max-height: 280px;
+}
+
+.ternary-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.ternary-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.ternary-toggle.coords {
+    margin-left: auto;
+}
+
+.ternary-toggle.precision {
+    color: #d97706;
+}
+
+.ternary-editor-row {
+    margin-bottom: 8px;
+}
+
+.ternary-editor-add {
+    margin-bottom: 8px;
+}
+
+.ternary-action-btn {
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.ternary-surface-form {
+    margin-bottom: 8px;
+}
+
+.ternary-surface-action {
+    flex: 0 0 auto;
+}
+
+.ternary-surface-index {
+    vertical-align: middle;
+}
+
+.ternary-iso-slider {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ternary-iso-label {
+    font-size: 11px;
+    white-space: nowrap;
+    color: #555;
+}
+
+.ternary-iso-range {
+    flex: 1;
+    accent-color: #FF8C00;
+}
+
+.ternary-iso-input {
+    width: 65px;
+    font-size: 12px;
+    padding: 2px 4px;
+    text-align: center;
+    color: #FF8C00;
+    font-weight: 600;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
 .card {
     background: white;
     border-radius: 8px;
@@ -607,6 +883,25 @@ select:focus {
     .sidebar {
         width: 100%;
     }
+    #page-binary .binary-layout {
+        gap: 12px;
+    }
+    #page-binary .sidebar {
+        position: static;
+        max-height: none;
+        overflow: visible;
+        order: 2;
+    }
+    #page-binary .main-content {
+        order: 1;
+    }
+    #page-binary .binary-visual-panel {
+        gap: 8px;
+    }
+    #page-binary #binaryChart.chart-container {
+        min-height: 460px;
+        height: min(68vh, 560px);
+    }
     .ternary-3d {
         min-height: 440px;
     }
@@ -617,6 +912,80 @@ select:focus {
 
 /* Narrow screens — stack vertically, full width */
 @media (max-width: 768px) {
+    .app-header {
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .nav-bar {
+        padding: 0 12px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .nav-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        padding: 12px 16px;
+    }
+    .page {
+        padding: 12px;
+    }
+    .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .tab-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+    #page-binary .binary-layout {
+        gap: 12px;
+    }
+    #page-binary .main-content {
+        gap: 10px;
+    }
+    #page-binary .sidebar-layout {
+        gap: 10px;
+    }
+    #page-binary .binary-visual-panel {
+        gap: 8px;
+    }
+    #page-binary .sidebar {
+        border-radius: 0;
+    }
+    #binarySidebar .card {
+        margin-bottom: 10px;
+    }
+    #binarySidebar .form-row {
+        flex-direction: column;
+        gap: 6px;
+    }
+    #binarySidebar .grid-2,
+    #binarySidebar .grid-3,
+    #binarySidebar .grid-4 {
+        grid-template-columns: 1fr;
+    }
+    #page-binary #binaryChart.chart-container {
+        min-height: 420px;
+        height: 64vh;
+        padding: 4px;
+    }
+    .binary-legend {
+        gap: 8px 10px;
+        padding: 8px 10px;
+    }
+    .binary-legend-item {
+        font-size: 11px;
+    }
+    .binary-result-card {
+        padding: 10px;
+    }
+    .ternary-toolbar-actions {
+        gap: 6px;
+    }
+    .ternary-toggle.coords {
+        margin-left: 0;
+    }
     .ternary-layout {
         flex-direction: column;
         gap: 12px;
@@ -632,5 +1001,51 @@ select:focus {
         width: 100%;
         min-height: 400px;
         max-height: 55vh;
+    }
+}
+
+@media (max-width: 480px) {
+    .app-header {
+        padding: 10px 12px;
+    }
+    .app-header h1 {
+        font-size: 18px;
+    }
+    .nav-bar {
+        padding: 0 8px;
+    }
+    .page {
+        padding: 10px 8px;
+    }
+    .card {
+        padding: 12px;
+    }
+    #page-binary .main-content {
+        gap: 8px;
+    }
+    #page-binary .binary-layout {
+        gap: 10px;
+    }
+    #binarySidebar .card {
+        padding: 10px;
+    }
+    #binarySidebar .data-table th,
+    #binarySidebar .data-table td {
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+    #page-binary #binaryChart.chart-container {
+        min-height: 360px;
+        height: min(58vh, 460px);
+    }
+    .binary-legend {
+        padding: 8px;
+        gap: 6px 8px;
+    }
+    .binary-legend-item {
+        font-size: 11px;
+    }
+    .binary-legend-line {
+        width: 20px;
     }
 }

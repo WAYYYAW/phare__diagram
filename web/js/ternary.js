@@ -172,7 +172,7 @@ function ternScheduleIsoUpdate() {
         if (ternPendingIsoTemp == null) return;
         AppState.ternary.isoTemp = ternPendingIsoTemp;
         renderTernary2d();
-        ternUpdateIsoPlane3d(ternPendingIsoTemp);
+        renderTernary3d();
     });
 }
 
@@ -188,6 +188,18 @@ function ternUpdateIsoPlane3d(val) {
             }
         }
     } catch (e) {}
+}
+
+function ternReadSceneCamera() {
+    try {
+        var chart3d = document.getElementById('ternaryChart3d');
+        if (!chart3d || !chart3d._fullLayout || !chart3d._fullLayout.scene || !chart3d._fullLayout.scene.camera) {
+            return null;
+        }
+        return JSON.parse(JSON.stringify(chart3d._fullLayout.scene.camera));
+    } catch (e) {
+        return null;
+    }
 }
 
 function ternPointEq2d(a, b, eps = TERN_JOIN_EPS) {
@@ -500,20 +512,20 @@ function renderTernaryToolbar() {
                 ${renderTernarySurfaces()}
             </div>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <div class="ternary-toolbar-actions">
             <button class="btn btn-danger" onclick="clearTernary()">🗑 清空全部</button>
             <button class="btn btn-primary" onclick="saveTernary()">💾 保存相图</button>
             <button class="btn" onclick="loadTernary()">📂 导入相图</button>
-            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-left:auto;">
+            <label class="ternary-toggle coords">
                 <input type="checkbox" ${ternShowCoords ? 'checked' : ''} onchange="ternShowCoords=this.checked;renderTernaryCharts();"> 点击显示坐标
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <label class="ternary-toggle">
                 <input type="checkbox" ${ternShowAxes ? 'checked' : ''} onchange="ternShowAxes=this.checked;renderTernaryCharts();"> 轴
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <label class="ternary-toggle">
                 <input type="checkbox" ${ternShowIsoFill ? 'checked' : ''} onchange="ternShowIsoFill=this.checked;renderTernary2d();"> 等温上方填色
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:#d97706;">
+            <label class="ternary-toggle precision">
                 <input type="checkbox" id="ternPrecisionToggle" ${ternHighPrecision ? 'checked' : ''} onchange="togglePrecision(this.checked)"> 高精度
             </label>
         </div>
@@ -534,7 +546,7 @@ function renderTernaryPoints() {
             <td><input type="number" value="${p.b}" step="1" min="0" max="100" onchange="onTernPtEdit(${i},'b',parseFloat(this.value)||0)"></td>
             <td>${c.toFixed(1)}</td>
             <td><input type="number" value="${p.temp}" step="10" onchange="onTernPtEdit(${i},'temp',parseFloat(this.value)||0)"></td>
-            <td><button class="btn btn-danger" onclick="removeTernPt(${i})" style="padding:2px 6px;font-size:11px;">✕</button></td>
+            <td><button class="btn btn-danger ternary-action-btn" onclick="removeTernPt(${i})">✕</button></td>
         </tr>`;
     });
 
@@ -544,13 +556,13 @@ function renderTernaryPoints() {
             <tbody>${rows}</tbody></table>`
         : '<div class="empty-state">暂无数据</div>';
 
-    var body = '<div class="grid-4" style="margin-bottom:8px;">' +
+    var body = '<div class="grid-4 ternary-editor-row">' +
             '<div class="form-group"><input type="number" id="tPtA" value="33.3" step="1" min="0" max="100" placeholder="A%"></div>' +
             '<div class="form-group"><input type="number" id="tPtB" value="33.3" step="1" min="0" max="100" placeholder="B%"></div>' +
             '<div class="form-group"><input type="number" id="tPtT" value="800" step="10" placeholder="T °C"></div>' +
             '<div class="form-group"><input type="text" id="tPtLabel" placeholder="标签（留空自动）"></div>' +
         '</div>' +
-        '<button class="btn btn-primary btn-full" onclick="addTernPt()" style="margin-bottom:8px;">➕ 添加点</button>';
+        '<button class="btn btn-primary btn-full ternary-editor-add" onclick="addTernPt()">➕ 添加点</button>';
 
     if (rows) {
         body += collapsibleWrap('特征点列表', state.points.length + '个', tableHTML, 'pt');
@@ -571,7 +583,7 @@ function renderTernaryLines() {
             <td><input type="number" value="${l.curve_x || 0}" step="5" onchange="onTernLnEdit(${i},'curve_x',parseFloat(this.value)||0)"></td>
             <td><input type="number" value="${l.curve_y || 0}" step="5" onchange="onTernLnEdit(${i},'curve_y',parseFloat(this.value)||0)"></td>
             <td><input type="number" value="${l.curve_z || 0}" step="5" onchange="onTernLnEdit(${i},'curve_z',parseFloat(this.value)||0)"></td>
-            <td><button class="btn btn-danger" onclick="removeTernLn(${i})" style="padding:2px 6px;font-size:11px;">✕</button></td>
+            <td><button class="btn btn-danger ternary-action-btn" onclick="removeTernLn(${i})">✕</button></td>
         </tr>`;
     });
 
@@ -581,13 +593,13 @@ function renderTernaryLines() {
             <tbody>${rows}</tbody></table>`
         : '<div class="empty-state">暂无数据</div>';
 
-    var body = '<div class="grid-4" style="margin-bottom:8px;">' +
+    var body = '<div class="grid-4 ternary-editor-row">' +
             '<div class="form-group"><input type="text" id="tLnStart" placeholder="起点标签"></div>' +
             '<div class="form-group"><input type="text" id="tLnEnd" placeholder="终点标签"></div>' +
             '<div class="form-group"><input type="number" id="tLnCx" value="0" step="5" placeholder="曲率X"></div>' +
             '<div class="form-group"><input type="number" id="tLnCy" value="0" step="5" placeholder="曲率Y"></div>' +
         '</div>' +
-        '<div class="grid-2" style="margin-bottom:8px;">' +
+        '<div class="grid-2 ternary-editor-row">' +
             '<div class="form-group"><input type="number" id="tLnCz" value="0" step="5" placeholder="曲率Z"></div>' +
             '<div class="form-group"><button class="btn btn-primary btn-full" onclick="addTernLn()">➕ 添加线</button></div>' +
         '</div>';
@@ -603,15 +615,15 @@ function renderTernaryLines() {
 
 function renderTernarySurfaces() {
     const state = AppState.ternary;
-    var formHTML = '<div class="form-row" style="margin-bottom:8px;"><div class="form-group"><input type="text" id="sfInput" placeholder="标签序列，如 ABC 或 ADGF"></div><div class="form-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
+    var formHTML = '<div class="form-row ternary-surface-form"><div class="form-group"><input type="text" id="sfInput" placeholder="标签序列，如 ABC 或 ADGF"></div><div class="form-group ternary-surface-action"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
 
     if (state.surfs.length > 0) {
         var rows = '';
         state.surfs.forEach((s, i) => {
             rows += '<tr>' +
-                '<td style="vertical-align:middle;">' + (i+1) + '</td>' +
+                '<td class="ternary-surface-index">' + (i+1) + '</td>' +
                 '<td><input type="text" value="' + s.line_labels.join(', ') + '" onchange="onTernSfEdit(' + i + ', this.value)"></td>' +
-                '<td><button class="btn btn-danger" onclick="removeTernSf(' + i + ')" style="padding:2px 6px;font-size:11px;">✕</button></td>' +
+                '<td><button class="btn btn-danger ternary-action-btn" onclick="removeTernSf(' + i + ')">✕</button></td>' +
             '</tr>';
         });
         var tableHTML = '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
@@ -747,17 +759,17 @@ function ternBuildIsoSlider() {
     const state = AppState.ternary;
     const val = state.isoTemp != null ? state.isoTemp : 650;
     const step = 10;
-    return `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
-        <span style="font-size:11px;white-space:nowrap;color:#555;">等温面 T</span>
+    return `<div class="ternary-iso-slider">
+        <span class="ternary-iso-label">等温面 T</span>
         <input type="range" id="ternIsoSlider" min="${TERN_MIN}" max="${TERN_MAX}" value="${val}" step="${step}"
             oninput="ternIsoSliderChange(parseInt(this.value), 'slider')"
             onpointerdown="ternSetDragging(true)"
             onpointerup="ternFinalizeIsoDrag(parseInt(this.value))"
             onchange="ternFinalizeIsoDrag(parseInt(this.value))"
-            style="flex:1;accent-color:#FF8C00;">
+            class="ternary-iso-range">
         <input type="number" id="ternIsoInput" value="${val}" min="${TERN_MIN}" max="${TERN_MAX}" step="${step}"
             onchange="ternIsoSliderChange(parseInt(this.value)||${TERN_MIN}, 'input')"
-            style="width:65px;font-size:12px;padding:2px 4px;text-align:center;color:#FF8C00;font-weight:600;border:1px solid #ddd;border-radius:4px;">
+            class="ternary-iso-input">
     </div>`;
 }
 
@@ -851,6 +863,7 @@ function renderTernaryCharts() {
 function renderTernary3d() {
     const state = AppState.ternary;
     const traces = [];
+    const currentCamera = ternReadSceneCamera();
 
     // Base triangle
     const triX = [0, 1, 0.5, 0];
@@ -1008,7 +1021,7 @@ function renderTernary3d() {
         zaxis: { visible: ternShowAxes, title: 'T °C', range: [TERN_MIN, TERN_MAX] },
         aspectmode: 'manual',
         aspectratio: { x: 1, y: 1, z: 0.5 },
-        camera: { eye: { x: 1.5, y: 1.5, z: 1.0 } },
+        camera: currentCamera || { eye: { x: 1.5, y: 1.5, z: 1.0 } },
     };
 
     if (ternShowCoords && ternShowAxes) {
@@ -1034,6 +1047,7 @@ function renderTernary3d() {
         margin: { l: 0, r: 0, t: 30, b: 0 },
         legend: { orientation: 'h', yanchor: 'top', y: -0.12, xanchor: 'center', x: 0.5, font: { size: 9 } },
         hovermode: ternShowCoords ? 'closest' : false,
+        uirevision: 'ternary-3d',
     };
 
     Plotly.react('ternaryChart3d', traces, layout, { responsive: true });
