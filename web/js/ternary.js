@@ -17,6 +17,7 @@ let ternModelVersion = 0;
 let ternSliderRaf = 0;
 let ternPendingIsoTemp = null;
 let ternIsDraggingIso = false;
+const TERNARY_DEMO_TEMPLATE = '简单三元共晶';
 
 function getTernaryTemplateNames() {
     return listTemplateNames(AppState.ternaryTemplates);
@@ -29,6 +30,658 @@ function applyTernaryTemplateData(name, data) {
     state.surfs = data.surfs || data.surfaces || [];
     state.isoTemp = data.isoTemp != null ? data.isoTemp : null;
     state.activeTemplate = name;
+    state.demo.label = '';
+    state.demo.routes = [];
+}
+
+function ternPointMap() {
+    const map = Object.create(null);
+    AppState.ternary.points.forEach(pt => {
+        if (pt && pt.label) map[pt.label] = pt;
+    });
+    return map;
+}
+
+function ternCompToXY(a, b, c) {
+    const r = XubenBridge.ternary.to3d(a, b, c, 0);
+    return [r.x, r.y];
+}
+
+function ternMakeDemoNode(a, b, c, temp, phase) {
+    const xyz = XubenBridge.ternary.to3d(a, b, c, temp);
+    return { a, b, c, temp, x: xyz.x, y: xyz.y, z: xyz.z, phase };
+}
+
+function ternBuildDemoPolygon(labels) {
+    const points = ternPointMap();
+    return labels.map(label => {
+        const pt = points[label];
+        if (!pt) return null;
+        const xy = ternCompToXY(pt.a, pt.b, pt.c);
+        return { label, a: pt.a, b: pt.b, c: pt.c, temp: pt.temp, x: xy[0], y: xy[1] };
+    }).filter(Boolean);
+}
+
+function ternDemoRegionTemperature(surface, x, y) {
+    const denom = ((surface[1].y - surface[2].y) * (surface[0].x - surface[2].x) +
+        (surface[2].x - surface[1].x) * (surface[0].y - surface[2].y));
+    if (Math.abs(denom) <= TERN_JOIN_EPS) return null;
+    const w1 = ((surface[1].y - surface[2].y) * (x - surface[2].x) +
+        (surface[2].x - surface[1].x) * (y - surface[2].y)) / denom;
+    const w2 = ((surface[2].y - surface[0].y) * (x - surface[2].x) +
+        (surface[0].x - surface[2].x) * (y - surface[2].y)) / denom;
+    const w3 = 1 - w1 - w2;
+    return w1 * surface[0].temp + w2 * surface[1].temp + w3 * surface[2].temp;
+}
+
+function ternPointInPolygon2d(pt, polygon) {
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        if (ternPointOnSegment2d(pt, polygon[j], polygon[i])) {
+            return true;
+        }
+    }
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i][0], yi = polygon[i][1];
+        const xj = polygon[j][0], yj = polygon[j][1];
+        const intersect = ((yi > pt[1]) !== (yj > pt[1])) &&
+            (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+function ternSegmentRayIntersection(origin, direction, a, b) {
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const wx = a[0] - origin[0];
+    const wy = a[1] - origin[1];
+    const det = direction[0] * (-vy) - direction[1] * (-vx);
+    if (Math.abs(det) <= TERN_JOIN_EPS) return null;
+    const t = (wx * (-vy) - wy * (-vx)) / det;
+    const u = (direction[0] * wy - direction[1] * wx) / det;
+    if (t < TERN_JOIN_EPS || u < -TERN_JOIN_EPS || u > 1 + TERN_JOIN_EPS) return null;
+    return {
+        x: origin[0] + t * direction[0],
+        y: origin[1] + t * direction[1],
+        t,
+    };
+}
+
+function ternSolveCompositionFromXY(x, y) {
+    const bFrac = x - y / Math.sqrt(3);
+    const cFrac = 2 * y / Math.sqrt(3);
+    const aFrac = 1 - bFrac - cFrac;
+    return {
+        a: Math.max(0, Math.min(100, aFrac * 100)),
+        b: Math.max(0, Math.min(100, bFrac * 100)),
+        c: Math.max(0, Math.min(100, cFrac * 100)),
+    };
+}
+
+function ternBuildLineCurve(line) {
+    const points = ternPointMap();
+    const sp = points[line.start];
+    const ep = points[line.end];
+    if (!sp || !ep) return null;
+    return XubenBridge.ternary.buildBezier(JSON.stringify(sp), JSON.stringify(ep), line.curve_x, line.curve_y, line.curve_z);
+}
+
+function ternFindLineByLabels(start, end) {
+    return AppState.ternary.lines.find(line =>
+        (line.start === start && line.end === end) ||
+        (line.start === end && line.end === start)
+    ) || null;
+}
+
+function ternSampleCurvePoints(curve, phase) {
+    if (!curve || !curve.xs || !curve.xs.length) return [];
+    const out = [];
+    for (let i = 0; i < curve.xs.length; i++) {
+        const comp = ternSolveCompositionFromXY(curve.xs[i], curve.ys[i]);
+        out.push({
+            a: comp.a,
+            b: comp.b,
+            c: comp.c,
+            x: curve.xs[i],
+            y: curve.ys[i],
+            z: curve.zs[i],
+            temp: curve.zs[i],
+            phase,
+        });
+    }
+    return out;
+}
+
+function ternCutCurveFromNearestPoint(curvePoints, targetXY, endXY) {
+    if (!curvePoints.length) return [];
+    let startIdx = 0;
+    let endIdx = 0;
+    let bestStart = Infinity;
+    let bestEnd = Infinity;
+    curvePoints.forEach((pt, idx) => {
+        const ds = Math.hypot(pt.x - targetXY[0], pt.y - targetXY[1]);
+        const de = Math.hypot(pt.x - endXY[0], pt.y - endXY[1]);
+        if (ds < bestStart) {
+            bestStart = ds;
+            startIdx = idx;
+        }
+        if (de < bestEnd) {
+            bestEnd = de;
+            endIdx = idx;
+        }
+    });
+    if (startIdx <= endIdx) return curvePoints.slice(startIdx, endIdx + 1);
+    return curvePoints.slice(endIdx, startIdx + 1).reverse();
+}
+
+function ternSampleLiquidusRaySegment(startNode, endXYT, phase, count = 72) {
+    const out = [];
+    for (let i = 0; i <= count; i++) {
+        const t = i / count;
+        const x = startNode.x + (endXYT.x - startNode.x) * t;
+        const y = startNode.y + (endXYT.y - startNode.y) * t;
+        const comp = ternSolveCompositionFromXY(x, y);
+        out.push({
+            a: comp.a,
+            b: comp.b,
+            c: comp.c,
+            x,
+            y,
+            temp: null,
+            z: null,
+            phase,
+        });
+    }
+    return out;
+}
+
+function ternResolveSurfaceIndices(surface) {
+    const indices = [];
+    for (const pair of surface.line_labels) {
+        for (let j = 0; j < AppState.ternary.lines.length; j++) {
+            const ln = AppState.ternary.lines[j];
+            if ((ln.start === pair[0] && ln.end === pair[1]) ||
+                (ln.start === pair[1] && ln.end === pair[0])) {
+                indices.push(j);
+                break;
+            }
+        }
+    }
+    return indices;
+}
+
+function ternGetSurfaceMeshByIndex(surfaceIndex) {
+    const state = AppState.ternary;
+    const surface = state.surfs[surfaceIndex];
+    if (!surface) return null;
+    const indices = ternResolveSurfaceIndices(surface);
+    if (indices.length < 3) return null;
+    const ptsJSON = JSON.stringify(state.points);
+    const lnsJSON = JSON.stringify(state.lines);
+    const idxJSON = JSON.stringify(indices);
+    return ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, indices.length === 3, surfaceIndex, ternCurrentLod()) ||
+        ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, indices.length === 3, surfaceIndex, 'low') ||
+        ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, indices.length === 3, surfaceIndex, 'high');
+}
+
+function ternSurfaceZAtXY(mesh, x, y) {
+    if (!mesh) return null;
+    let bestFallback = null;
+    for (let ti = 0; ti < mesh.numTris; ti++) {
+        const i0 = mesh.is[ti], i1 = mesh.js[ti], i2 = mesh.ks[ti];
+        const tri = [
+            [mesh.xs[i0], mesh.ys[i0]],
+            [mesh.xs[i1], mesh.ys[i1]],
+            [mesh.xs[i2], mesh.ys[i2]],
+        ];
+        const denom = ((tri[1][1] - tri[2][1]) * (tri[0][0] - tri[2][0]) +
+            (tri[2][0] - tri[1][0]) * (tri[0][1] - tri[2][1]));
+        if (Math.abs(denom) <= TERN_JOIN_EPS) continue;
+        const w1 = ((tri[1][1] - tri[2][1]) * (x - tri[2][0]) +
+            (tri[2][0] - tri[1][0]) * (y - tri[2][1])) / denom;
+        const w2 = ((tri[2][1] - tri[0][1]) * (x - tri[2][0]) +
+            (tri[0][0] - tri[2][0]) * (y - tri[2][1])) / denom;
+        const w3 = 1 - w1 - w2;
+        const z = w1 * mesh.zs[i0] + w2 * mesh.zs[i1] + w3 * mesh.zs[i2];
+        const inside = w1 >= -5e-3 && w2 >= -5e-3 && w3 >= -5e-3;
+        if (inside) {
+            return z;
+        }
+        const outsidePenalty = Math.max(0, -w1) + Math.max(0, -w2) + Math.max(0, -w3);
+        if (!bestFallback || outsidePenalty < bestFallback.penalty) {
+            bestFallback = { penalty: outsidePenalty, z };
+        }
+    }
+    return bestFallback ? bestFallback.z : null;
+}
+
+function ternProjectRayOntoSurface(points, surfaceIndex, phase) {
+    const mesh = ternGetSurfaceMeshByIndex(surfaceIndex);
+    if (!mesh) return [];
+    const out = [];
+    points.forEach(pt => {
+        const z = ternSurfaceZAtXY(mesh, pt.x, pt.y);
+        if (z == null) {
+            if (!out.length) return;
+            const prev = out[out.length - 1];
+            out.push({
+                a: pt.a,
+                b: pt.b,
+                c: pt.c,
+                temp: prev.temp,
+                x: pt.x,
+                y: pt.y,
+                z: prev.z,
+                phase,
+            });
+            return;
+        }
+        const xyz = XubenBridge.ternary.to3d(pt.a, pt.b, pt.c, z);
+        out.push({
+            a: pt.a,
+            b: pt.b,
+            c: pt.c,
+            temp: z,
+            x: xyz.x,
+            y: xyz.y,
+            z,
+            phase,
+        });
+    });
+    return out;
+}
+
+function ternFindCotecticHit(region, originXY, direction, points) {
+    const candidates = [];
+    for (let i = 0; i < region.polygon.length; i++) {
+        const curr = region.polygon[i];
+        const next = region.polygon[(i + 1) % region.polygon.length];
+        if (!curr || !next) continue;
+        if (curr.label === region.vertex.label || next.label === region.vertex.label) continue;
+        const hit = ternSegmentRayIntersection(originXY, direction, [curr.x, curr.y], [next.x, next.y]);
+        if (!hit) continue;
+        candidates.push({
+            t: hit.t,
+            x: hit.x,
+            y: hit.y,
+            labels: [curr.label, next.label],
+        });
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.t - b.t);
+    const best = candidates[0];
+    best.start = points[best.labels[0]];
+    best.end = points[best.labels[1]];
+    return best;
+}
+
+function ternBuildSimpleEutecticRoute(a, b, c, startTemp) {
+    const xy = ternCompToXY(a, b, c);
+    const points = ternPointMap();
+    const regions = [
+        {
+            key: 'A',
+            vertex: points.A,
+            surfaceIndex: 0,
+            polygon: ternBuildDemoPolygon(['A', 'G', 'I', 'C']),
+            end: points.I,
+        },
+        {
+            key: 'B',
+            vertex: points.B,
+            surfaceIndex: 1,
+            polygon: ternBuildDemoPolygon(['B', 'C', 'I', 'M']),
+            end: points.I,
+        },
+        {
+            key: 'C',
+            vertex: points.F,
+            surfaceIndex: 2,
+            polygon: ternBuildDemoPolygon(['F', 'G', 'I', 'M']),
+            end: points.I,
+        },
+    ];
+
+    for (const region of regions) {
+        if (!region.vertex || region.polygon.length < 3 || !region.end) {
+            continue;
+        }
+        const polygon = region.polygon.map(pt => [pt.x, pt.y]);
+        if (!ternPointInPolygon2d(xy, polygon)) continue;
+
+        const tri = [region.polygon[0], region.polygon[1], region.polygon[2]];
+        const liquidusTemp = ternDemoRegionTemperature(tri, xy[0], xy[1]) || region.vertex.temp;
+        const vertexXY = ternCompToXY(region.vertex.a, region.vertex.b, region.vertex.c);
+        const direction = [xy[0] - vertexXY[0], xy[1] - vertexXY[1]];
+        const hit = ternFindCotecticHit(region, xy, direction, points);
+        if (!hit) {
+            return {
+                error: '未能求出背离初晶顶点后的共晶谷交点',
+                segments: [{ kind: 'hold', points: [ternMakeDemoNode(a, b, c, Math.max(TERN_MIN, startTemp), '纯液相')] }],
+            };
+        }
+
+        const cotecticLine = ternFindLineByLabels(hit.labels[0], hit.labels[1]);
+        if (!cotecticLine) {
+            return {
+                error: `缺少共晶谷线 ${hit.labels.join('-')}`,
+                segments: [{ kind: 'hold', points: [ternMakeDemoNode(a, b, c, Math.max(TERN_MIN, startTemp), '纯液相')] }],
+            };
+        }
+        const cotecticCurve = ternBuildLineCurve(cotecticLine);
+        const cotecticName = `${hit.labels.join('-')} 共晶谷`;
+        const cotecticPoints = ternSampleCurvePoints(cotecticCurve, `${cotecticName}滑落`);
+        const endXY = ternCompToXY(region.end.a, region.end.b, region.end.c);
+        const cotecticSegment = ternCutCurveFromNearestPoint(cotecticPoints, [hit.x, hit.y], endXY);
+        if (!cotecticSegment.length) {
+            return {
+                error: `未能沿共晶谷线 ${hit.labels.join('-')} 提取轨迹`,
+                segments: [{ kind: 'hold', points: [ternMakeDemoNode(a, b, c, Math.max(TERN_MIN, startTemp), '纯液相')] }],
+            };
+        }
+
+        const holdStart = ternMakeDemoNode(a, b, c, startTemp, startTemp > liquidusTemp ? '纯液相' : '起始状态');
+        const liquidusTarget = {
+            x: hit.x,
+            y: hit.y,
+        };
+        const raySamples = ternSampleLiquidusRaySegment(holdStart, liquidusTarget, `${region.vertex.label} 初晶析出`);
+        const liquidusSegment = ternProjectRayOntoSurface(raySamples, region.surfaceIndex, `${region.vertex.label} 初晶析出`);
+        if (!liquidusSegment.length) {
+            return {
+                error: `未能将液相路径投影到液相面 ${region.surfaceIndex + 1}`,
+                segments: [{ kind: 'hold', points: [ternMakeDemoNode(a, b, c, Math.max(TERN_MIN, startTemp), '纯液相')] }],
+            };
+        }
+        liquidusSegment[0].phase = '液相面起晶';
+        liquidusSegment[liquidusSegment.length - 1].phase = `${cotecticName}入口`;
+        const liquidusStart = liquidusSegment[0];
+        const holdSegment = startTemp > liquidusStart.temp + TERN_JOIN_EPS
+            ? [holdStart, liquidusStart]
+            : [liquidusStart];
+        cotecticSegment[0].phase = `${cotecticName}入口`;
+        cotecticSegment[cotecticSegment.length - 1].phase = '三元共晶点';
+        const terminal = cotecticSegment[cotecticSegment.length - 1];
+        const solidifiedEnd = ternMakeDemoNode(terminal.a, terminal.b, terminal.c, TERN_MIN, '凝固完成');
+
+        return {
+            error: null,
+            segments: [
+                { kind: 'hold', points: holdSegment },
+                { kind: 'liquidus', points: liquidusSegment },
+                { kind: 'cotectic', points: cotecticSegment },
+                { kind: 'final', points: [terminal, solidifiedEnd] },
+            ],
+        };
+    }
+
+    return {
+        error: '该成分点未落在当前演示用主液相面内',
+        segments: [{ kind: 'hold', points: [ternMakeDemoNode(a, b, c, Math.max(TERN_MIN, startTemp), '纯液相')] }],
+    };
+}
+
+function ternSetDemoComposition(field, value) {
+    const state = AppState.ternary;
+    state.demo[field] = value;
+    renderTernaryToolbar();
+}
+
+function ternBuildRouteRecord(label, a, b, startTemp) {
+    const clampedA = Math.max(0, Math.min(100, Number(a) || 0));
+    const clampedB = Math.max(0, Math.min(100 - clampedA, Number(b) || 0));
+    const clampedC = Math.max(0, 100 - clampedA - clampedB);
+    const clampedTemp = Math.max(TERN_MIN, Math.min(TERN_MAX, Number(startTemp) || 0));
+    const built = ternBuildSimpleEutecticRoute(clampedA, clampedB, clampedC, clampedTemp);
+    return {
+        label,
+        a: clampedA,
+        b: clampedB,
+        c: clampedC,
+        startTemp: clampedTemp,
+        segments: built.segments,
+        error: built.error,
+    };
+}
+
+function ternRefreshStoredRoutes() {
+    const state = AppState.ternary;
+    state.demo.routes = state.demo.routes.map(route =>
+        ternBuildRouteRecord(route.label, route.a, route.b, route.startTemp)
+    );
+}
+
+function ternRouteSummary(route, index) {
+    if (!route) return '';
+    return `${route.label || ('路线' + (index + 1))} | A${route.a.toFixed(1)} B${route.b.toFixed(1)} C${route.c.toFixed(1)} T${route.startTemp.toFixed(0)}`;
+}
+
+function ternDemoPhasePath(route) {
+    return ternFlattenDemoPoints(route)
+        .map(node => node.phase)
+        .filter((phase, idx, arr) => idx === 0 || arr[idx - 1] !== phase)
+        .join(' → ');
+}
+
+function ternAddDemoRoute() {
+    const state = AppState.ternary;
+    const label = (state.demo.label || '').trim() || nextAutoLabel(state.demo.routes.map(route => route.label).filter(Boolean));
+    if (state.demo.routes.some(route => route.label === label)) {
+        alert('路线标签已存在');
+        return;
+    }
+    const record = ternBuildRouteRecord(label, state.demo.a, state.demo.b, state.demo.startTemp);
+    if (record.error) {
+        alert(record.error);
+        renderTernaryToolbar();
+        renderTernaryCharts();
+        return;
+    }
+    state.demo.routes.push(record);
+    state.demo.label = '';
+    renderTernaryToolbar();
+    renderTernaryCharts();
+}
+
+function onTernDemoRouteEdit(label, field, value) {
+    const state = AppState.ternary;
+    const route = state.demo.routes.find(item => item.label === label);
+    if (!route) return;
+    if (field === 'label') {
+        const nextLabel = String(value || '').trim();
+        if (!nextLabel) {
+            alert('路线标签不能为空');
+            renderTernaryToolbar();
+            return;
+        }
+        if (nextLabel !== label && state.demo.routes.some(item => item.label === nextLabel)) {
+            alert('路线标签已存在');
+            renderTernaryToolbar();
+            return;
+        }
+        route.label = nextLabel;
+        renderTernaryToolbar();
+        renderTernaryCharts();
+        return;
+    }
+    const rebuilt = ternBuildRouteRecord(route.label, field === 'a' ? value : route.a, field === 'b' ? value : route.b, field === 'startTemp' ? value : route.startTemp);
+    if (rebuilt.error) {
+        alert(rebuilt.error);
+        renderTernaryToolbar();
+        renderTernaryCharts();
+        return;
+    }
+    Object.assign(route, rebuilt);
+    renderTernaryToolbar();
+    renderTernaryCharts();
+}
+
+function ternDeleteDemoRoute(label) {
+    const state = AppState.ternary;
+    state.demo.routes = state.demo.routes.filter(item => item.label !== label);
+    renderTernaryToolbar();
+    renderTernaryCharts();
+}
+
+function ternFlattenDemoPoints(route) {
+    if (!route || !route.segments) return [];
+    const out = [];
+    route.segments.forEach(segment => {
+        if (!segment || !segment.points) return;
+        segment.points.forEach((pt, idx) => {
+            if (out.length && idx === 0) {
+                const prev = out[out.length - 1];
+                if (Math.abs(prev.x - pt.x) <= TERN_JOIN_EPS &&
+                    Math.abs(prev.y - pt.y) <= TERN_JOIN_EPS &&
+                    Math.abs(prev.z - pt.z) <= TERN_JOIN_EPS) {
+                    return;
+                }
+            }
+            out.push(pt);
+        });
+    });
+    return out;
+}
+
+function ternRenderDemoCard() {
+    const state = AppState.ternary;
+    if (state.activeTemplate !== TERNARY_DEMO_TEMPLATE) return '';
+    const demo = state.demo;
+    const c = Math.max(0, 100 - (Number(demo.a) || 0) - (Number(demo.b) || 0));
+    const savedRows = demo.routes.length
+        ? `<table class="data-table">
+            <thead><tr><th>标签</th><th>A%</th><th>B%</th><th>C%</th><th>T0</th><th>路线</th><th></th></tr></thead>
+            <tbody>${demo.routes.map((route, idx) => `
+                <tr>
+                    <td><input type="text" value="${route.label || ('路线' + (idx + 1))}" onchange="onTernDemoRouteEdit('${route.label}', 'label', this.value)"></td>
+                    <td><input type="number" min="0" max="100" step="1" value="${route.a}" onchange="onTernDemoRouteEdit('${route.label}', 'a', parseFloat(this.value)||0)"></td>
+                    <td><input type="number" min="0" max="100" step="1" value="${route.b}" onchange="onTernDemoRouteEdit('${route.label}', 'b', parseFloat(this.value)||0)"></td>
+                    <td>${route.c.toFixed(1)}</td>
+                    <td><input type="number" min="${TERN_MIN}" max="${TERN_MAX}" step="10" value="${route.startTemp}" onchange="onTernDemoRouteEdit('${route.label}', 'startTemp', parseFloat(this.value)||0)"></td>
+                    <td>${ternDemoPhasePath(route)}</td>
+                    <td>
+                        <button class="btn btn-danger ternary-action-btn" onclick="ternDeleteDemoRoute('${route.label}')">✕</button>
+                    </td>
+                </tr>
+            `).join('')}</tbody></table>`
+        : '<div class="empty-state">暂无已保存路线</div>';
+    return `
+        <div class="card ternary-sidebar-card">
+            <div class="card-title">冷却路线演示</div>
+            <div class="grid-4 ternary-editor-row">
+                <div class="form-group"><label>标签</label><input type="text" value="${demo.label || ''}" placeholder="留空自动" onchange="ternSetDemoComposition('label', this.value)"></div>
+                <div class="form-group"><label>A%</label><input type="number" min="0" max="100" step="1" value="${demo.a}" onchange="ternSetDemoComposition('a', parseFloat(this.value)||0)"></div>
+                <div class="form-group"><label>B%</label><input type="number" min="0" max="100" step="1" value="${demo.b}" onchange="ternSetDemoComposition('b', parseFloat(this.value)||0)"></div>
+                <div class="form-group"><label>C%</label><input type="number" value="${c.toFixed(1)}" disabled></div>
+            </div>
+            <div class="form-group">
+                <label>起始温度 T0 (°C)</label>
+                <input type="number" min="${TERN_MIN}" max="${TERN_MAX}" step="10" value="${demo.startTemp}" onchange="ternSetDemoComposition('startTemp', parseFloat(this.value)||0)">
+            </div>
+            <div class="ternary-toolbar-actions">
+                <button class="btn btn-primary" onclick="ternAddDemoRoute()">添加路线</button>
+            </div>
+            ${status}
+            ${savedRows}
+        </div>
+    `;
+}
+
+function ternDemoRenderableRoutes() {
+    return AppState.ternary.demo.routes.filter(route => route && !route.error && route.segments && route.segments.length);
+}
+
+function ternAppendSingleDemoRoute3d(traces, route, legendName) {
+    const styles = {
+        hold: { color: '#000000', width: 5, dash: 'dash' },
+        liquidus: { color: '#DC2626', width: 7, dash: 'solid' },
+        cotectic: { color: '#87CEEB', width: 8, dash: 'solid' },
+        final: { color: '#2563EB', width: 5, dash: 'dot' },
+    };
+    route.segments.forEach((segment, idx) => {
+        if (!segment.points || segment.points.length < 1) return;
+        const showMarkers = segment.points.length === 1;
+        traces.push({
+            x: segment.points.map(pt => pt.x),
+            y: segment.points.map(pt => pt.y),
+            z: segment.points.map(pt => pt.z),
+            mode: showMarkers ? 'markers' : 'lines',
+            line: styles[segment.kind] || styles.liquidus,
+            marker: { size: 4, color: '#F59E0B', line: { color: '#111827', width: 1 }, opacity: showMarkers ? 1 : 0 },
+            type: 'scatter3d',
+            name: idx === 0 ? legendName : undefined,
+            showlegend: idx === 0,
+            hoverinfo: 'text',
+            hovertext: segment.points.map(pt => `${pt.phase}<br>A=${pt.a.toFixed(1)}% B=${pt.b.toFixed(1)}% C=${pt.c.toFixed(1)}%<br>T=${pt.temp.toFixed(1)}°C`),
+        });
+    });
+
+    const flat = ternFlattenDemoPoints(route);
+    if (flat.length >= 2) {
+        traces.push({
+            x: [flat[0].x, flat[flat.length - 1].x],
+            y: [flat[0].y, flat[flat.length - 1].y],
+            z: [flat[0].z, flat[flat.length - 1].z],
+            mode: 'markers',
+            marker: { size: 5, color: '#F59E0B', line: { color: '#111827', width: 1 } },
+            type: 'scatter3d',
+            showlegend: false,
+            hoverinfo: 'skip',
+        });
+    }
+}
+
+function ternAppendDemoRoute3d(traces) {
+    ternDemoRenderableRoutes().forEach((route, idx) => {
+        ternAppendSingleDemoRoute3d(traces, route, `结晶路线 ${idx + 1}`);
+    });
+}
+
+function ternAppendSingleDemoRoute2d(traces, route) {
+    const styles = {
+        hold: { color: '#000000', width: 2, dash: 'dash' },
+        liquidus: { color: '#DC2626', width: 3, dash: 'solid' },
+        cotectic: { color: '#87CEEB', width: 4, dash: 'solid' },
+        final: { color: '#2563EB', width: 2, dash: 'dot' },
+    };
+    route.segments.forEach(segment => {
+        if (!segment.points || !segment.points.length) return;
+        const showMarkers = segment.points.length === 1;
+        traces.push({
+            x: segment.points.map(pt => pt.x),
+            y: segment.points.map(pt => pt.y),
+            mode: showMarkers ? 'markers' : 'lines',
+            line: styles[segment.kind] || styles.liquidus,
+            marker: { size: 6, color: '#F59E0B', line: { color: '#111827', width: 1 }, opacity: showMarkers ? 1 : 0 },
+            text: segment.points.map((pt, idx) => idx === segment.points.length - 1 ? pt.phase : ''),
+            textposition: 'top right',
+            textfont: { size: 10, color: '#111827' },
+            type: 'scatter',
+            showlegend: false,
+            hoverinfo: 'skip',
+        });
+    });
+
+    const flat = ternFlattenDemoPoints(route);
+    if (flat.length >= 2) {
+        traces.push({
+            x: [flat[0].x, flat[flat.length - 1].x],
+            y: [flat[0].y, flat[flat.length - 1].y],
+            mode: 'markers',
+            marker: { size: 6, color: '#F59E0B', line: { color: '#111827', width: 1 } },
+            text: ['', flat[flat.length - 1].phase],
+            textposition: 'top right',
+            textfont: { size: 10, color: '#111827' },
+            type: 'scatter',
+            showlegend: false,
+            hoverinfo: 'skip',
+        });
+    }
+}
+
+function ternAppendDemoRoute2d(traces) {
+    ternDemoRenderableRoutes().forEach(route => ternAppendSingleDemoRoute2d(traces, route));
 }
 
 function loadInitialTernaryTemplate() {
@@ -513,6 +1166,7 @@ function renderTernary() {
     const state = AppState.ternary;
     ternInvalidateMeshCache();
     ternPendingIsoTemp = state.isoTemp;
+    ternRefreshStoredRoutes();
     renderTernaryToolbar();
     renderTernaryIsoControl();
     renderTernaryCharts();
@@ -585,6 +1239,7 @@ function renderTernaryToolbar() {
             </div>
             <div class="caption ternary-sidebar-caption">等温面: ${state.isoTemp != null ? state.isoTemp + '°C' : '无'}</div>
         </div>
+        ${ternRenderDemoCard()}
     `;
     container.innerHTML = html;
 }
@@ -702,6 +1357,8 @@ function onTernSfEdit(idx, raw) {
     AppState.ternary.surfs[idx].line_labels = parts;
     ternMarkCustomTemplate();
     ternInvalidateMeshCache();
+    ternRefreshStoredRoutes();
+    renderTernaryToolbar();
     renderTernaryCharts();
 }
 
@@ -736,6 +1393,7 @@ function onTernPtEdit(idx, field, value) {
     AppState.ternary.points[idx][field] = value;
     ternMarkCustomTemplate();
     ternInvalidateMeshCache();
+    ternRefreshStoredRoutes();
     renderTernaryToolbar();
     renderTernaryCharts();
 }
@@ -744,6 +1402,8 @@ function onTernLnEdit(idx, field, value) {
     AppState.ternary.lines[idx][field] = value;
     ternMarkCustomTemplate();
     ternInvalidateMeshCache();
+    ternRefreshStoredRoutes();
+    renderTernaryToolbar();
     renderTernaryCharts();
 }
 
@@ -902,6 +1562,8 @@ function clearTernary() {
     AppState.ternary.surfs = [];
     AppState.ternary.isoTemp = null;
     AppState.ternary.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
+    AppState.ternary.demo.label = '';
+    AppState.ternary.demo.routes = [];
     renderTernary();
 }
 
@@ -938,6 +1600,8 @@ function loadTernary() {
                 state.surfs = (data.surfs || data.surfaces || []).map(s => ({ line_labels: s.line_labels }));
                 state.isoTemp = null;
                 state.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
+                state.demo.label = '';
+                state.demo.routes = [];
                 renderTernary();
             } catch(err) {
                 alert('文件格式错误');
@@ -1119,6 +1783,8 @@ function renderTernary3d() {
             hoverinfo: 'skip'
         });
     }
+
+    ternAppendDemoRoute3d(traces);
 
     // Hoverable base plane (when coords enabled)
     if (ternShowCoords) {
@@ -1391,6 +2057,8 @@ function renderTernary2d() {
             type: 'scatter', showlegend: false,
         });
     }
+
+    ternAppendDemoRoute2d(traces);
 
     const layout = {
         xaxis: { visible: false, range: [-0.06, 1.06], scaleanchor: 'y', scaleratio: 1 },

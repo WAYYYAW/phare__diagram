@@ -38,6 +38,13 @@ const AppState = {
         surfs: [],
         isoTemp: null,
         activeTemplate: TERNARY_TEMPLATE_CUSTOM,
+        demo: {
+            label: '',
+            a: 30,
+            b: 60,
+            startTemp: 1100,
+            routes: [],
+        },
     }
 };
 

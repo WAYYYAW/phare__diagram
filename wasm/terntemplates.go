@@ -78,6 +78,8 @@ var TernaryTemplates = map[string]*TernaryTemplate{
 		},
 		Surfaces: []TernarySurface{
 			{LineLabels: []string{"AG", "GI", "IC", "CA"}},
+			{LineLabels: []string{"BC", "CI", "IM", "MB"}},
+			{LineLabels: []string{"FG", "GI", "IM", "MF"}},
 			{LineLabels: []string{"DG", "GI", "IJ", "JD"}},
 			{LineLabels: []string{"IJ", "JL", "LI"}},
 		},
