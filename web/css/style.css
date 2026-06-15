@@ -18,12 +18,22 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .app-header h1 {
     font-size: 20px;
     font-weight: 600;
+}
+
+.app-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .wasm-status {
@@ -35,6 +45,37 @@ body {
 
 .wasm-status.loaded {
     background: #4caf50;
+}
+
+.onther-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    color: white;
+    text-decoration: none;
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.2);
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.onther-link:hover {
+    background: rgba(255,255,255,0.22);
+    border-color: rgba(255,255,255,0.32);
+    transform: translateY(-1px);
+}
+
+.onther-link svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+.onther-link span {
+    font-size: 12px;
+    line-height: 1.2;
+    word-break: break-all;
 }
 
 .nav-bar {
@@ -74,6 +115,13 @@ body {
 
 .page.active {
     display: block;
+}
+
+.page-disclaimer {
+    padding: 0 24px 24px;
+    font-size: 13px;
+    color: #666;
+    text-align: center;
 }
 
 .sidebar-layout {
