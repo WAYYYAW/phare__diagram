@@ -23,11 +23,24 @@ function getTernaryTemplateNames() {
     return listTemplateNames(AppState.ternaryTemplates);
 }
 
+function ternDefaultSurfaceColor(index) {
+    return SURFACE_COLORS[index % SURFACE_COLORS.length];
+}
+
+function ternNormalizeSurface(surface, index) {
+    const src = surface || {};
+    return {
+        line_labels: Array.isArray(src.line_labels) ? src.line_labels : [],
+        fillVisible: src.fillVisible !== false,
+        color: typeof src.color === 'string' && src.color ? src.color : ternDefaultSurfaceColor(index || 0),
+    };
+}
+
 function applyTernaryTemplateData(name, data) {
     const state = AppState.ternary;
     state.points = data.points || [];
     state.lines = data.lines || [];
-    state.surfs = data.surfs || data.surfaces || [];
+    state.surfs = (data.surfs || data.surfaces || []).map((surface, index) => ternNormalizeSurface(surface, index));
     state.isoTemp = data.isoTemp != null ? data.isoTemp : null;
     state.activeTemplate = name;
     state.demo.label = '';
@@ -1336,13 +1349,18 @@ function renderTernarySurfaces() {
     if (state.surfs.length > 0) {
         var rows = '';
         state.surfs.forEach((s, i) => {
+            var eyeIcon = s.fillVisible !== false ? '👁' : '🙈';
+            var eyeTitle = s.fillVisible !== false ? '关闭这个面的着色' : '显示这个面的着色';
+            var color = s.color || ternDefaultSurfaceColor(i);
             rows += '<tr>' +
                 '<td class="ternary-surface-index">' + (i+1) + '</td>' +
                 '<td><input type="text" value="' + s.line_labels.join(', ') + '" onchange="onTernSfEdit(' + i + ', this.value)"></td>' +
+                '<td><input type="color" class="ternary-surface-color-input" value="' + color + '" onchange="onTernSfColorEdit(' + i + ', this.value)" aria-label="修改曲面颜色"></td>' +
+                '<td><button class="btn ternary-visibility-btn" title="' + eyeTitle + '" aria-label="' + eyeTitle + '" onclick="toggleTernSfFill(' + i + ')">' + eyeIcon + '</button></td>' +
                 '<td><button class="btn btn-danger ternary-action-btn" onclick="removeTernSf(' + i + ')">✕</button></td>' +
             '</tr>';
         });
-        var tableHTML = '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+        var tableHTML = '<table class="data-table"><thead><tr><th>#</th><th>边界线</th><th>颜色</th><th>着色</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
         return formHTML + collapsibleWrap('曲面列表', state.surfs.length + '个', tableHTML, 'sf');
     }
     return formHTML + '<div class="empty-state">暂无曲面</div>';
@@ -1359,6 +1377,24 @@ function onTernSfEdit(idx, raw) {
     ternMarkCustomTemplate();
     ternInvalidateMeshCache();
     ternRefreshStoredRoutes();
+    renderTernaryToolbar();
+    renderTernaryCharts();
+}
+
+function onTernSfColorEdit(idx, value) {
+    const surface = AppState.ternary.surfs[idx];
+    if (!surface) return;
+    surface.color = value || ternDefaultSurfaceColor(idx);
+    ternMarkCustomTemplate();
+    renderTernaryToolbar();
+    renderTernaryCharts();
+}
+
+function toggleTernSfFill(idx) {
+    const surface = AppState.ternary.surfs[idx];
+    if (!surface) return;
+    surface.fillVisible = surface.fillVisible === false;
+    ternMarkCustomTemplate();
     renderTernaryToolbar();
     renderTernaryCharts();
 }
@@ -1501,7 +1537,7 @@ function addTernSurface() {
         indices.push(found);
     }
 
-    state.surfs.push({ line_labels: pairs });
+    state.surfs.push(ternNormalizeSurface({ line_labels: pairs }, state.surfs.length));
     ternMarkCustomTemplate();
     renderTernary();
 }
@@ -1573,7 +1609,11 @@ function saveTernary() {
     const data = {
         points: state.points.map(p => ({ label: p.label, a: p.a, b: p.b, c: p.c, temp: p.temp })),
         lines: state.lines.map(l => ({ start: l.start, end: l.end, curve_x: l.curve_x, curve_y: l.curve_y, curve_z: l.curve_z })),
-        surfaces: state.surfs.map(s => ({ line_labels: s.line_labels })),
+        surfaces: state.surfs.map((s, i) => ({
+            line_labels: s.line_labels,
+            fillVisible: s.fillVisible !== false,
+            color: s.color || ternDefaultSurfaceColor(i),
+        })),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1598,7 +1638,7 @@ function loadTernary() {
                 const state = AppState.ternary;
                 state.points = (data.points || []).map(p => ({ label: p.label, a: p.a, b: p.b, c: p.c, temp: p.temp }));
                 state.lines = (data.lines || []).map(l => ({ start: l.start, end: l.end, curve_x: l.curve_x, curve_y: l.curve_y, curve_z: l.curve_z }));
-                state.surfs = (data.surfs || data.surfaces || []).map(s => ({ line_labels: s.line_labels }));
+                state.surfs = (data.surfs || data.surfaces || []).map((surface, index) => ternNormalizeSurface(surface, index));
                 state.isoTemp = null;
                 state.activeTemplate = TERNARY_TEMPLATE_CUSTOM;
                 state.demo.label = '';
@@ -1737,6 +1777,7 @@ function renderTernary3d() {
 
     // Surfaces
     state.surfs.forEach((s, si) => {
+        if (s.fillVisible === false) return;
         const indices = [];
         for (const pair of s.line_labels) {
             for (let j = 0; j < state.lines.length; j++) {
@@ -1755,7 +1796,7 @@ function renderTernary3d() {
             const idxJSON = JSON.stringify(indices);
             const zcData = ternGetCachedMesh(ptsJSON, lnsJSON, idxJSON, indices.length === 3, si, ternCurrentLod());
             if (zcData) {
-                const color = SURFACE_COLORS[si % SURFACE_COLORS.length];
+                const color = s.color || ternDefaultSurfaceColor(si);
                 traces.push({
                     x: zcData.xs, y: zcData.ys, z: zcData.zs,
                     i: zcData.is, j: zcData.js, k: zcData.ks,
@@ -1873,7 +1914,7 @@ function renderTernary2d() {
             const xs = zcData.xs, ys = zcData.ys, zs = zcData.zs;
             const is = zcData.is, js = zcData.js, ks = zcData.ks;
             const numTris = zcData.numTris;
-            const baseColor = SURFACE_COLORS[si % SURFACE_COLORS.length];
+            const baseColor = s.color || ternDefaultSurfaceColor(si);
 
             const abovePolys = [];
             const sfContour = [];
@@ -1965,7 +2006,7 @@ function renderTernary2d() {
             }
 
             // Above-plane fill
-            if (ternShowIsoFill && abovePolys.length > 0) {
+            if (s.fillVisible !== false && ternShowIsoFill && abovePolys.length > 0) {
                 const footprintLoops = ternExtractBoundaryLoops(abovePolys);
                 const ax = [], ay = [];
                 let fillMode = 'none';

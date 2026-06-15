@@ -525,6 +525,22 @@ body {
     font-size: 11px;
 }
 
+.ternary-visibility-btn {
+    min-width: 34px;
+    padding: 2px 6px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.ternary-surface-color-input {
+    width: 36px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
 .ternary-surface-form {
     margin-bottom: 8px;
 }

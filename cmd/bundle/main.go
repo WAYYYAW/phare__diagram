@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -56,6 +57,7 @@ func main() {
 	}
 
 	wasmBase64 := base64.StdEncoding.EncodeToString(wasm)
+	figletBanner := buildFigletBanner("WAYYYAW")
 
 	// Read index.html
 	idxHTML, err := os.ReadFile(filepath.Join(webDir, "index.html"))
@@ -63,6 +65,9 @@ func main() {
 		panic(err)
 	}
 	src := string(idxHTML)
+	if figletBanner != "" {
+		src = figletBanner + "\n" + src
+	}
 
 	// 1. Inline CSS (replace <link> with <style>)
 	src = strings.Replace(src,
@@ -148,4 +153,26 @@ const wasmBase64 = "%s";
 		float64(len(plotly))/1024,
 		float64(len(wasm))/1024,
 	)
+}
+
+func buildFigletBanner(text string) string {
+	out, err := exec.Command("figlet", text).Output()
+	if err != nil {
+		return ""
+	}
+
+	banner := strings.TrimRight(string(out), "\n")
+	if banner == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("    <!--\n%s\n    -->", indentLines(banner, "    "))
+}
+
+func indentLines(s, prefix string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n")
 }
