@@ -1270,18 +1270,18 @@ function renderTernaryPoints() {
     state.points.forEach((p, i) => {
         const c = Math.max(0, 100 - p.a - p.b);
         rows += `<tr>
-            <td><input type="text" value="${p.label || ''}" onchange="onTernPtEdit(${i},'label',this.value)"></td>
-            <td><input type="number" value="${p.a}" step="1" min="0" max="100" onchange="onTernPtEdit(${i},'a',parseFloat(this.value)||0)"></td>
-            <td><input type="number" value="${p.b}" step="1" min="0" max="100" onchange="onTernPtEdit(${i},'b',parseFloat(this.value)||0)"></td>
-            <td>${c.toFixed(1)}</td>
-            <td><input type="number" value="${p.temp}" step="10" onchange="onTernPtEdit(${i},'temp',parseFloat(this.value)||0)"></td>
-            <td><button class="btn btn-danger ternary-action-btn" onclick="removeTernPt(${i})">✕</button></td>
+            <td class="ternary-pt-col-label"><input type="text" value="${p.label || ''}" onchange="onTernPtEdit(${i},'label',this.value)"></td>
+            <td class="ternary-pt-col-comp"><input type="number" value="${p.a}" step="1" min="0" max="100" onchange="onTernPtEdit(${i},'a',parseFloat(this.value)||0)"></td>
+            <td class="ternary-pt-col-comp"><input type="number" value="${p.b}" step="1" min="0" max="100" onchange="onTernPtEdit(${i},'b',parseFloat(this.value)||0)"></td>
+            <td class="ternary-pt-col-comp ternary-pt-col-readonly ternary-pt-col-c">${c.toFixed(1)}</td>
+            <td class="ternary-pt-col-temp"><input type="number" value="${p.temp}" step="10" onchange="onTernPtEdit(${i},'temp',parseFloat(this.value)||0)"></td>
+            <td class="ternary-pt-col-actions"><button class="btn btn-danger ternary-action-btn" onclick="removeTernPt(${i})">✕</button></td>
         </tr>`;
     });
 
     var tableHTML = rows
         ? `<table class="data-table">
-            <thead><tr><th>标签</th><th>A%</th><th>B%</th><th>C%</th><th>T °C</th><th></th></tr></thead>
+            <thead><tr><th class="ternary-pt-col-label">标签</th><th class="ternary-pt-col-comp">A%</th><th class="ternary-pt-col-comp">B%</th><th class="ternary-pt-col-comp ternary-pt-col-c">C%</th><th class="ternary-pt-col-temp">T °C</th><th class="ternary-pt-col-actions"></th></tr></thead>
             <tbody>${rows}</tbody></table>`
         : '<div class="empty-state">暂无数据</div>';
 

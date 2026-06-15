@@ -358,7 +358,7 @@ body {
 
 .ternary-shell {
     display: grid;
-    grid-template-columns: minmax(0, 1.95fr) clamp(300px, 23vw, 340px);
+    grid-template-columns: minmax(0, 1.8fr) clamp(380px, 28vw, 460px);
     gap: 16px;
     align-items: start;
     max-width: 1680px;
@@ -539,6 +539,36 @@ body {
     border: 0;
     background: transparent;
     cursor: pointer;
+}
+
+.ternary-pt-col-label {
+    width: 19%;
+}
+
+.ternary-pt-col-comp {
+    width: 15%;
+    min-width: 72px;
+}
+
+.ternary-pt-col-temp {
+    width: 19%;
+    min-width: 88px;
+}
+
+.ternary-pt-col-readonly {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.ternary-pt-col-actions {
+    width: 32px;
+    min-width: 32px;
+    text-align: center;
+}
+
+.ternary-pt-col-actions .ternary-action-btn {
+    padding: 2px 4px;
+    min-width: 24px;
 }
 
 .ternary-surface-form {
@@ -1329,6 +1359,9 @@ select:focus {
     }
     .ternary-route-table-wrap {
         overflow: visible;
+    }
+    .ternary-pt-col-c {
+        display: none;
     }
 }
 
