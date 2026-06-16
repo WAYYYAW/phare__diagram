@@ -1,6 +1,6 @@
 (function() {
     var STORAGE_KEY = '_xu_analytics_v1';
-    var ENDPOINT = 'http://127.0.0.1:7999/analytics';
+    var ENDPOINT = window.__XUBEN_ANALYTICS_ENDPOINT__ || 'http://127.0.0.1:7999/analytics';
 
     var throttled = false;
     var last = localStorage.getItem(STORAGE_KEY);

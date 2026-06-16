@@ -68,6 +68,11 @@ func main() {
 	if figletBanner != "" {
 		src = figletBanner + "\n" + src
 	}
+	src = strings.Replace(src,
+		`window.__XUBEN_ANALYTICS_ENDPOINT__ = 'http://127.0.0.1:7999/analytics';`,
+		`window.__XUBEN_ANALYTICS_ENDPOINT__ = 'http://111.228.48.127:25410/analytics';`,
+		1,
+	)
 
 	// 1. Inline CSS (replace <link> with <style>)
 	src = strings.Replace(src,
@@ -81,6 +86,7 @@ func main() {
 
 	// 3. Remove all external script tags
 	for _, tag := range []string{
+		`<script src="js/analytics.js"></script>`,
 		`<script src="js/app.js"></script>`,
 		`<script src="js/bridge.js"></script>`,
 		`<script src="js/binary.js"></script>`,

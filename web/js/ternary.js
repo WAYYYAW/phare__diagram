@@ -27,10 +27,116 @@ function ternDefaultSurfaceColor(index) {
     return SURFACE_COLORS[index % SURFACE_COLORS.length];
 }
 
-function ternNormalizeSurface(surface, index) {
+function ternPointLabelMap(points = AppState.ternary.points) {
+    const map = new Map();
+    (points || []).forEach(point => {
+        const label = typeof point?.label === 'string' ? point.label.trim() : '';
+        if (!label) return;
+        map.set(label.toUpperCase(), label);
+    });
+    return map;
+}
+
+function ternEnumerateCompactLabelParses(raw, labelMap, minCount, maxCount) {
+    const normalized = raw.trim().toUpperCase();
+    const tokens = Array.from(labelMap.keys()).sort((left, right) => right.length - left.length || left.localeCompare(right));
+    const results = [];
+    const seen = new Set();
+    if (!normalized || !tokens.length) return results;
+
+    function dfs(offset, acc) {
+        if (results.length > 12 || acc.length > maxCount) return;
+        if (offset === normalized.length) {
+            if (acc.length >= minCount && acc.length <= maxCount) {
+                const key = acc.join('\u0000');
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    results.push(acc.slice());
+                }
+            }
+            return;
+        }
+        for (const token of tokens) {
+            if (!normalized.startsWith(token, offset)) continue;
+            acc.push(labelMap.get(token));
+            dfs(offset + token.length, acc);
+            acc.pop();
+        }
+    }
+
+    dfs(0, []);
+    return results;
+}
+
+function ternParseVertexSequence(raw, points = AppState.ternary.points) {
+    const labelMap = ternPointLabelMap(points);
+    if (!raw.trim()) return { error: '请输入3或4个顶点标签' };
+
+    const delimited = raw.split(/[,\s，、;/|]+/).map(item => item.trim()).filter(Boolean);
+    if (delimited.length > 1) {
+        if (delimited.length < 3 || delimited.length > 4) {
+            return { error: '请输入3或4个顶点标签' };
+        }
+        const labels = [];
+        for (const token of delimited) {
+            const resolved = labelMap.get(token.toUpperCase());
+            if (!resolved) return { error: `顶点 '${token}' 不存在` };
+            labels.push(resolved);
+        }
+        return { labels };
+    }
+
+    const parses = ternEnumerateCompactLabelParses(raw, labelMap, 3, 4);
+    if (!parses.length) return { error: '无法识别顶点序列，请使用逗号分隔多字符标签' };
+    if (parses.length > 1) return { error: '顶点序列存在歧义，请使用逗号分隔多字符标签' };
+    return { labels: parses[0] };
+}
+
+function ternParseSurfaceEdgeToken(raw, points = AppState.ternary.points) {
+    const text = String(raw || '').trim();
+    const labelMap = ternPointLabelMap(points);
+    if (!text) return { error: '边界线不能为空' };
+
+    const sepMatch = text.match(/^(.+?)(?:\s*[-→>]\s*)(.+)$/);
+    if (sepMatch) {
+        const start = labelMap.get(sepMatch[1].trim().toUpperCase());
+        const end = labelMap.get(sepMatch[2].trim().toUpperCase());
+        if (!start || !end) return { error: `边界线 '${text}' 包含不存在的顶点` };
+        if (start === end) return { error: `边界线 '${text}' 的两个端点不能相同` };
+        return { edge: [start, end] };
+    }
+
+    const parses = ternEnumerateCompactLabelParses(text, labelMap, 2, 2);
+    if (!parses.length) return { error: `无法识别边界线 '${text}'，请使用 A-B 格式` };
+    if (parses.length > 1) return { error: `边界线 '${text}' 存在歧义，请使用 A-B 格式` };
+    if (parses[0][0] === parses[0][1]) return { error: `边界线 '${text}' 的两个端点不能相同` };
+    return { edge: parses[0] };
+}
+
+function ternFormatSurfaceEdge(edge) {
+    if (Array.isArray(edge) && edge.length >= 2) {
+        return `${edge[0]}-${edge[1]}`;
+    }
+    if (edge && typeof edge === 'object' && typeof edge.start === 'string' && typeof edge.end === 'string') {
+        return `${edge.start}-${edge.end}`;
+    }
+    return String(edge || '');
+}
+
+function ternNormalizeSurface(surface, index, points = AppState.ternary.points) {
     const src = surface || {};
+    const lineLabels = Array.isArray(src.line_labels)
+        ? src.line_labels.map(item => {
+            if (Array.isArray(item) && item.length >= 2) return [item[0], item[1]];
+            if (item && typeof item === 'object' && typeof item.start === 'string' && typeof item.end === 'string') {
+                return [item.start, item.end];
+            }
+            const parsed = ternParseSurfaceEdgeToken(item, points);
+            return parsed.edge || null;
+        }).filter(Boolean)
+        : [];
     return {
-        line_labels: Array.isArray(src.line_labels) ? src.line_labels : [],
+        line_labels: lineLabels,
         fillVisible: src.fillVisible !== false,
         color: typeof src.color === 'string' && src.color ? src.color : ternDefaultSurfaceColor(index || 0),
     };
@@ -1344,7 +1450,7 @@ function renderTernaryLines() {
 
 function renderTernarySurfaces() {
     const state = AppState.ternary;
-    var formHTML = '<div class="form-row ternary-surface-form"><div class="form-group"><input type="text" id="sfInput" placeholder="标签序列，如 ABC 或 ADGF"></div><div class="form-group ternary-surface-action"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
+    var formHTML = '<div class="form-row ternary-surface-form"><div class="form-group"><input type="text" id="sfInput" placeholder="顶点序列，如 ABC、ADGF 或 A,AA,B"></div><div class="form-group ternary-surface-action"><button class="btn btn-primary" onclick="addTernSurface()">🔧 生成曲面</button></div></div>';
 
     if (state.surfs.length > 0) {
         var rows = '';
@@ -1354,7 +1460,7 @@ function renderTernarySurfaces() {
             var color = s.color || ternDefaultSurfaceColor(i);
             rows += '<tr>' +
                 '<td class="ternary-surface-index">' + (i+1) + '</td>' +
-                '<td><input type="text" value="' + s.line_labels.join(', ') + '" onchange="onTernSfEdit(' + i + ', this.value)"></td>' +
+                '<td><input type="text" value="' + s.line_labels.map(ternFormatSurfaceEdge).join(', ') + '" onchange="onTernSfEdit(' + i + ', this.value)"></td>' +
                 '<td><input type="color" class="ternary-surface-color-input" value="' + color + '" onchange="onTernSfColorEdit(' + i + ', this.value)" aria-label="修改曲面颜色"></td>' +
                 '<td><button class="btn ternary-visibility-btn" title="' + eyeTitle + '" aria-label="' + eyeTitle + '" onclick="toggleTernSfFill(' + i + ')">' + eyeIcon + '</button></td>' +
                 '<td><button class="btn btn-danger ternary-action-btn" onclick="removeTernSf(' + i + ')">✕</button></td>' +
@@ -1372,8 +1478,21 @@ function removeTernSf(idx) {
 }
 
 function onTernSfEdit(idx, raw) {
-    const parts = raw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
-    AppState.ternary.surfs[idx].line_labels = parts;
+    const parts = raw.split(',').map(item => item.trim()).filter(Boolean);
+    if (parts.length < 3) {
+        alert('至少需要3条边界线');
+        return;
+    }
+    const parsedEdges = [];
+    for (const part of parts) {
+        const parsed = ternParseSurfaceEdgeToken(part);
+        if (!parsed.edge) {
+            alert(parsed.error || `无法识别边界线 '${part}'`);
+            return;
+        }
+        parsedEdges.push(parsed.edge);
+    }
+    AppState.ternary.surfs[idx].line_labels = parsedEdges;
     ternMarkCustomTemplate();
     ternInvalidateMeshCache();
     ternRefreshStoredRoutes();
@@ -1494,25 +1613,17 @@ function removeTernLn(idx) {
 
 function addTernSurface() {
     const state = AppState.ternary;
-    const raw = document.getElementById('sfInput').value.trim().toUpperCase();
-    if (raw.length < 3 || raw.length > 4) {
-        alert('请输入3或4个顶点标签，如 ABC 或 ADGF');
+    const raw = document.getElementById('sfInput').value.trim();
+    const parsedVertices = ternParseVertexSequence(raw, state.points);
+    if (!parsedVertices.labels) {
+        alert(parsedVertices.error || '请输入有效的顶点序列');
         return;
     }
+    const labels = parsedVertices.labels;
 
-    // Auto-expand vertex sequence to edge pairs: "ABC" → AB, BC, CA
     const pairs = [];
-    for (let i = 0; i < raw.length; i++) {
-        pairs.push(raw[i] + raw[(i + 1) % raw.length]);
-    }
-
-    // Validate each character is a known point
-    const pointLabels = new Set(state.points.map(p => p.label));
-    for (const ch of raw) {
-        if (!pointLabels.has(ch)) {
-            alert(`顶点 '${ch}' 不存在`);
-            return;
-        }
+    for (let i = 0; i < labels.length; i++) {
+        pairs.push([labels[i], labels[(i + 1) % labels.length]]);
     }
 
     // Validate each pair matches an existing line
@@ -1528,11 +1639,11 @@ function addTernSurface() {
             }
         }
         if (found < 0) {
-            alert(`边界线${pair}不存在，已自动添加`);
+            alert(`边界线 ${pair[0]}-${pair[1]} 不存在，已自动添加`);
             state.lines.push({ start: pair[0], end: pair[1], curve_x: 0, curve_y: 0, curve_z: 0 });
             found = state.lines.length - 1;
         }
-        if (seen.has(found)) { alert(`边界线 ${pair} 重复使用`); return; }
+        if (seen.has(found)) { alert(`边界线 ${pair[0]}-${pair[1]} 重复使用`); return; }
         seen.add(found);
         indices.push(found);
     }
@@ -1778,16 +1889,7 @@ function renderTernary3d() {
     // Surfaces
     state.surfs.forEach((s, si) => {
         if (s.fillVisible === false) return;
-        const indices = [];
-        for (const pair of s.line_labels) {
-            for (let j = 0; j < state.lines.length; j++) {
-                const ln = state.lines[j];
-                if ((ln.start === pair[0] && ln.end === pair[1]) ||
-                    (ln.start === pair[1] && ln.end === pair[0])) {
-                    indices.push(j); break;
-                }
-            }
-        }
+        const indices = ternResolveSurfaceIndices(s);
         if (indices.length < 3) return;
 
         try {
@@ -1892,16 +1994,7 @@ function renderTernary2d() {
 
     // ---- Surface projection (Coons patches → 2D filled polygons) ----
     state.surfs.forEach((s, si) => {
-        const sfIndices = [];
-        for (const pair of s.line_labels) {
-            for (let j = 0; j < state.lines.length; j++) {
-                const ln = state.lines[j];
-                if ((ln.start === pair[0] && ln.end === pair[1]) ||
-                    (ln.start === pair[1] && ln.end === pair[0])) {
-                    sfIndices.push(j); break;
-                }
-            }
-        }
+        const sfIndices = ternResolveSurfaceIndices(s);
         if (sfIndices.length < 3) return;
 
         try {
